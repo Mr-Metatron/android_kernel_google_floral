@@ -12,7 +12,8 @@
     "commit": "29182889399818f97baa65ea238c80e8117981eb",
     "directory": "clang-r596125",
     "version": "22.0.2",
-    "archive_sha256": "eecbed4fe6092d54c4933c54d661bd2986861b14a3c3b5dc843caba64eff5f0f",
+    "tree_sha": "95fa94380c2c7cc6632328f2bd9c39a8fdad9d31",
+    "reference_archive_sha256": "eecbed4fe6092d54c4933c54d661bd2986861b14a3c3b5dc843caba64eff5f0f",
     "clang_sha256": "b50deb7c48633d03c02b15b6508d79768027e80422265d7a4a7f2f13d2f01d97",
     "lld_sha256": "36eb18dc6acdd4eca1f63e9ac73708cfef84cdd1c1db47b3ca686a5d1fcdcd81"
   },

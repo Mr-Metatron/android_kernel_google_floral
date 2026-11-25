@@ -7,6 +7,8 @@ deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 out=${FLORAL_OUT:-"$root/.ci-out/$stage"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
 mkdir -p "$out" "$dist"
+cp "$deps/clang-tree-check.json" "$dist/"
+if [[ -f "$deps/clang-archive.sha256" ]]; then cp "$deps/clang-archive.sha256" "$dist/"; fi
 clang_dir=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clang"]["directory"])' "$root/ci/sources.json")
 export PATH="$deps/$clang_dir/bin:$deps/gcc64/bin:$deps/gcc32/bin:$PATH"
 export LD_LIBRARY_PATH="$deps/$clang_dir/lib:${LD_LIBRARY_PATH:-}"

@@ -24,13 +24,13 @@ if [[ ! -x "$deps/$clang_dir/bin/clang" ]]; then
   sha=$(read_field clang commit)
   archive="$deps/$clang_dir.tar.gz"
   curl -fL --retry 3 --connect-timeout 30 "$repo/+archive/$sha/$clang_dir.tar.gz" -o "$archive"
-  expected=$(read_field clang archive_sha256)
-  printf '%s  %s\n' "$expected" "$archive" | sha256sum --check -
   mkdir -p "$deps/$clang_dir"
   tar -xzf "$archive" -C "$deps/$clang_dir"
   sha256sum "$archive" > "$deps/clang-archive.sha256"
   rm "$archive"
 fi
+python3 "$root/ci/scripts/check-toolchain-tree.py" "$deps/$clang_dir" \
+  "$(read_field clang tree_sha)" --report "$deps/clang-tree-check.json"
 printf '%s  %s\n' "$(read_field clang clang_sha256)" "$deps/$clang_dir/bin/clang" | sha256sum --check -
 printf '%s  %s\n' "$(read_field clang lld_sha256)" "$deps/$clang_dir/bin/ld.lld" | sha256sum --check -
 fetch_repo gcc64
