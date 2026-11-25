@@ -24,7 +24,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: floral-${{ github.ref }}-${{ github.event_name }}
+  group: floral-${{ github.ref }}-${{ github.event_name }}-${{ inputs.stage || 'stage1' }}-${{ inputs.source_ref || github.sha }}
   cancel-in-progress: false
 
 jobs:
