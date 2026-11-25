@@ -623,6 +623,9 @@ static int s_show(struct seq_file *m, void *p)
 	{
 		if (susfs_starts_with(iter->name, "ksu_") ||
 			susfs_starts_with(iter->name, "__ksu_") ||
+			susfs_starts_with(iter->name, "sukisu_") ||
+			susfs_starts_with(iter->name, "__ksymtab_sukisu_") ||
+			susfs_starts_with(iter->name, "__kstrtab_sukisu_") ||
 			susfs_starts_with(iter->name, "susfs_") ||
 			susfs_starts_with(iter->name, "ksud") ||
 			susfs_starts_with(iter->name, "is_ksu_") ||

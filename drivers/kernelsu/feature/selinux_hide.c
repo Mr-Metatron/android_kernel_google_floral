@@ -400,37 +400,39 @@ init_hooks:; // apply_kernelsu_rules_fn
 
 	int tries = 0;
 try_again:
+#ifdef CONFIG_KSU_SUSFS
+	initialize_fake_status();
+	if (fake_status)
+		goto page_ok;
+#else
 	if (!ksu_prepare_fake_status_page())
 		goto page_ok;
+#endif
 		
 	msleep(1000);
 	tries = tries + 1;
-	if (tries > 10)
+	if (tries > 10) {
+		pr_warn("selinux_hide: fake status not ready\n");
 		return 0;
+	}
 
 	goto try_again;
 
 page_ok:
 #ifdef CONFIG_KSU_SUSFS
 	// the kernel patch serves fake_status itself, no fops hijack needed
-	initialize_fake_status();
-	if (fake_status) {
-		if (ksu_fake_status_init_pending())
-			ksu_fake_status_init_stop();
-		if (ksu_selinux_hide_enabled)
-			ksu_selinux_hide_running = true;
-	} else {
-		pr_warn("selinux_hide: fake status not ready, SUSFS status spoof disabled\n");
-	}
+	if (ksu_fake_status_init_pending())
+		ksu_fake_status_init_stop();
+	if (ksu_selinux_hide_enabled)
+		ksu_selinux_hide_running = true;
 #else
 	ksu_init_hook_sel_handle_status_ops_open();
 	ksu_init_hook_transaction_ops_write();
+	// downstream/slow_avc_audit_defs.h
+	ksu_init_slow_avc_audit_hook();
 #endif
 
 	// selinux_setprocattr hook init is on lsm.
-	
-	// downstream/slow_avc_audit_defs.h
-	ksu_init_slow_avc_audit_hook();
 
 	return 0;
 }
@@ -476,7 +478,7 @@ void __init ksu_selinux_hide_init()
 	ksu_selinux_hide_alloc_hazptr_slot();
 
 #ifdef CONFIG_KSU_SUSFS
-	// allow selinuxfs.c to lazily build the fake status page on first open
+	// Mark the status page pending until the background thread prepares it.
 	ksu_fake_status_init_start();
 #endif
 
