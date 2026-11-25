@@ -1,0 +1,12 @@
+{
+  "file_sha256": "1202adb835a64d8b3df703da7884a2966f8728c131cffb29fb5f48d31d81ac85",
+  "v2_certificate_size": 860,
+  "v2_certificate_sha256": "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef",
+  "expected_size": 860,
+  "expected_hash": "947ae944f3de4ed4c21a7e4f7953ecf351bfa2b36239da37a34111ad29993eef",
+  "matches_kernel_identity": true,
+  "asset_url": "https://github.com/SukiSU-Nova/SukiSU-Nova/releases/download/v3.0.0/SukiSU_Nova_v3.0.0_35000-arm64-v8a-release.apk",
+  "package": "com.sukisu.nova",
+  "method": "Read the APK v2 signing block certificate and compare its DER size and SHA256 with the frozen Nova kernel Makefile constants.",
+  "runtime_manager_recognition": "pending device validation"
+}

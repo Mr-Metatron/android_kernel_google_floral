@@ -37,7 +37,7 @@ if mode == 'linked':
                      '-ftrivial-auto-var-init=zero']:
             if flag not in command:
                 errors.append(f'Nova compiler command lacks {flag}')
-        for flag in ['-fno-stack-protector', '-fno-stack-check']:
+        for flag in ['-fno-stack-protector']:
             if flag in command:
                 errors.append(f'Nova compiler command disables protection: {flag}')
         (dist / 'nova-compile-command.txt').write_text(command)

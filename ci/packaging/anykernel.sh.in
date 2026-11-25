@@ -1,0 +1,44 @@
+### Pixel 4 Stage 1 kernel-only installer, based on the pinned AnyKernel3.
+properties() { '
+kernel.string=Floral @STAGE@ / @DEVICE@ / @SOURCE_SHORT@
+do.devicecheck=1
+do.modules=0
+do.systemless=0
+do.cleanup=1
+do.cleanuponabort=0
+device.name1=@DEVICE@
+supported.versions=17
+supported.patchlevels=
+supported.vendorpatchlevels=
+'; }
+
+BLOCK=boot;
+IS_SLOT_DEVICE=1;
+SLOT_SELECT=active;
+RAMDISK_COMPRESSION=auto;
+PATCH_VBMETA_FLAG=0;
+NO_MAGISK_CHECK=1;
+NO_VBMETA_PARTITION_PATCH=1;
+
+. tools/ak3-core.sh;
+
+case "$SLOT" in
+  _a|_b) ;;
+  *) abort "Expected an A/B active boot slot." ;;
+esac;
+case "$BLOCK" in
+  */boot"$SLOT") ;;
+  *) abort "Refusing a target other than the active boot partition." ;;
+esac;
+
+ui_print "Build has not been tested on a physical device.";
+ui_print "Replacing the kernel in boot$SLOT; keeping the current ramdisk.";
+
+# split_boot and flash_boot omit CPIO extraction and CPIO archive rebuilding.
+# Compression and AVB handling remain those of the pinned upstream magiskboot.
+split_boot;
+[ "$(wc -c < "$BOOTIMG")" -eq 67108864 ] || abort "Expected a 64 MiB boot partition.";
+[ "$(od -An -tu4 -j40 -N4 "$BOOTIMG" | tr -d ' ')" = 2 ] || abort "Expected boot header v2.";
+[ "$(od -An -tu4 -j36 -N4 "$BOOTIMG" | tr -d ' ')" = 4096 ] || abort "Expected a 4096-byte boot page.";
+
+flash_boot;

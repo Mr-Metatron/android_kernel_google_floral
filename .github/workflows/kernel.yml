@@ -17,6 +17,7 @@ on:
         description: Optional source commit or ref
         type: string
         required: false
+        default: feature/stage1-nova-full
 
 permissions:
   contents: read
@@ -30,6 +31,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    env:
+      FLORAL_JOBS: '4'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -44,6 +47,7 @@ jobs:
           stage=${REQUESTED_STAGE:-stage1}
           if [[ ! -f drivers/kernelsu/ksu.c ]]; then stage=baseline; fi
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           git fetch --depth 1 origin bb17b7de4b570f2c0c32ddba0543cac03c58dd84
       - name: Install host build tools
         run: |
@@ -59,12 +63,14 @@ jobs:
         run: bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
       - name: Package flashable images
         if: steps.select.outputs.stage == 'stage1'
-        run: bash ci/scripts/package.sh
+        run: |
+          bash ci/scripts/kpm.sh
+          bash ci/scripts/package.sh stage1
       - name: Upload build evidence and successful artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: floral-${{ steps.select.outputs.stage }}-${{ github.sha }}
+          name: floral-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
           path: .ci-dist/
           retention-days: 30
           if-no-files-found: warn
