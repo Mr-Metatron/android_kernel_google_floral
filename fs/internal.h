@@ -189,6 +189,11 @@ loff_t iomap_apply(struct inode *inode, loff_t pos, loff_t length,
 /* direct-io.c: */
 int sb_init_dio_done_wq(struct super_block *sb);
 
+#ifdef CONFIG_KSU_SUSFS
+int filename_lookup(int dfd, struct filename *name, unsigned int flags,
+		    struct path *path, struct path *root);
+#endif
+
 #ifdef CONFIG_FILE_TABLE_DEBUG
 void global_filetable_print_warning_once(void);
 void global_filetable_add(struct file *filp);

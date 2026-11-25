@@ -42,6 +42,12 @@
 #include "objsec.h"
 #include "conditional.h"
 
+#ifdef CONFIG_KSU_SUSFS
+extern struct page *fake_status;
+extern bool ksu_selinux_hide_is_active(void);
+extern bool ksu_selinux_hide_should_filter_context(char *context, size_t size);
+#endif
+
 enum sel_inos {
 	SEL_ROOT_INO = 2,
 	SEL_LOAD,	/* load policy */
@@ -225,6 +231,11 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 	if (!status)
 		return -ENOMEM;
 
+#ifdef CONFIG_KSU_SUSFS
+	/* Nova prepares this view; the global enforcing state stays untouched. */
+	if (ksu_selinux_hide_is_active() && READ_ONCE(fake_status))
+		status = READ_ONCE(fake_status);
+#endif
 	filp->private_data = status;
 
 	return 0;
@@ -619,6 +630,12 @@ static ssize_t sel_write_context(struct file *file, char *buf, size_t size)
 	if (length)
 		goto out;
 
+#ifdef CONFIG_KSU_SUSFS
+	if (ksu_selinux_hide_should_filter_context(buf, size)) {
+		length = -EINVAL;
+		goto out;
+	}
+#endif
 	length = security_context_to_sid(state, buf, size, &sid, GFP_KERNEL);
 	if (length)
 		goto out;
@@ -855,6 +872,11 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 	if (sscanf(buf, "%s %s %hu", scon, tcon, &tclass) != 3)
 		goto out;
 
+#ifdef CONFIG_KSU_SUSFS
+	if (ksu_selinux_hide_should_filter_context(scon, strlen(scon)) ||
+	    ksu_selinux_hide_should_filter_context(tcon, strlen(tcon)))
+		goto out;
+#endif
 	length = security_context_str_to_sid(state, scon, &ssid, GFP_KERNEL);
 	if (length)
 		goto out;
@@ -865,6 +887,10 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 
 	security_compute_av_user(state, ssid, tsid, tclass, &avd);
 
+#ifdef CONFIG_KSU_SUSFS
+	if (ksu_selinux_hide_is_active())
+		avd.seqno = 1;
+#endif
 	length = scnprintf(buf, SIMPLE_TRANSACTION_LIMIT,
 			  "%x %x %x %x %u %x",
 			  avd.allowed, 0xffffffff,

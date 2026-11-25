@@ -62,6 +62,10 @@
 #include <linux/oom.h>
 #include <linux/compat.h>
 #include <linux/vmalloc.h>
+#ifdef CONFIG_KSU_SUSFS
+#include <linux/jump_label.h>
+#include <linux/susfs_def.h>
+#endif
 
 #include <linux/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1880,12 +1884,69 @@ out_ret:
 	return retval;
 }
 
+#ifdef CONFIG_KSU_SUSFS
+extern struct static_key_true ksu_su_compat_enabled;
+extern struct static_key_true ksu_is_init_rc_hook_enabled;
+extern int ksu_handle_execveat_sucompat(int *fd, struct filename **filename,
+				     void *argv, void *envp, int *flags);
+extern int ksu_handle_post_execveat_sucompat(int *fd,
+		struct filename **filename, void *argv, void *envp,
+		int *flags, int *retval);
+#if defined(CONFIG_ARM64) && defined(CONFIG_JUMP_LABEL)
+extern int ksu_setup_preinit_file(struct filename **filename,
+				struct user_arg_ptr *argv);
+extern int ksu_preinit_handle_post_execveat(int *fd,
+		struct filename **filename, void *argv, void *envp,
+		int *flags, int *retval, int *preinit_fd);
+#endif
+#endif
+
 static int do_execveat_common(int fd, struct filename *filename,
 			      struct user_arg_ptr argv,
 			      struct user_arg_ptr envp,
 			      int flags)
 {
+#ifdef CONFIG_KSU_SUSFS
+	bool is_su_session = false;
+	int preinit_fd = -1;
+	int retval;
+
+	if (IS_ERR(filename))
+		return PTR_ERR(filename);
+
+#if defined(CONFIG_ARM64) && defined(CONFIG_JUMP_LABEL)
+	if (current->pid == 1 &&
+	    static_branch_likely(&ksu_is_init_rc_hook_enabled))
+		preinit_fd = ksu_setup_preinit_file(&filename, &argv);
+#endif
+	if (!susfs_is_current_proc_no_su() &&
+	    static_branch_likely(&ksu_su_compat_enabled))
+		is_su_session = !ksu_handle_execveat_sucompat(&fd, &filename,
+							   &argv, &envp, &flags);
+
+	if (!is_su_session && preinit_fd < 0)
+		return __do_execve_file(fd, filename, argv, envp, flags, NULL);
+
+	/* The exec implementation consumes one reference on every return. */
+	filename->refcnt++;
+	retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
+#if defined(CONFIG_ARM64) && defined(CONFIG_JUMP_LABEL)
+	if (preinit_fd >= 0 &&
+	    ksu_preinit_handle_post_execveat(&fd, &filename, &argv, &envp,
+					    &flags, &retval, &preinit_fd) == -EAGAIN) {
+		/* The runner could not load. Retry the unchanged init arguments. */
+		filename->refcnt++;
+		retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
+	}
+#endif
+	if (is_su_session)
+		ksu_handle_post_execveat_sucompat(&fd, &filename, &argv, &envp,
+						 &flags, &retval);
+	putname(filename);
+	return retval;
+#else
 	return __do_execve_file(fd, filename, argv, envp, flags, NULL);
+#endif
 }
 
 int do_execve_file(struct file *file, void *__argv, void *__envp)
