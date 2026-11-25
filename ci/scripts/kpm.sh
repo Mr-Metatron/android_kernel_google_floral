@@ -111,8 +111,7 @@ if [[ ! -x "${cross}gcc" ]]; then
   unpack=$(mktemp -d "$deps/gnu-unpack.XXXXXX")
   trap 'rm -rf "$unpack"' EXIT
   tar -xJf "$archive" -C "$unpack" --strip-components=1
-  [[ ! -e "$toolchain" ]] || rm -rf "$toolchain"
-  mv "$unpack" "$toolchain"
+  mv -T "$unpack" "$toolchain"
   trap - EXIT
   rm "$archive"
 fi

@@ -26,8 +26,7 @@ if [[ ! -x "$deps/$clang_dir/bin/clang" ]]; then
   unpack=$(mktemp -d "$deps/clang-unpack.XXXXXX")
   trap 'rm -rf "$unpack"' EXIT
   tar -xzf "$archive" -C "$unpack"
-  [[ ! -e "$deps/$clang_dir" ]] || rm -rf "$deps/$clang_dir"
-  mv "$unpack" "$deps/$clang_dir"
+  mv -T "$unpack" "$deps/$clang_dir"
   trap - EXIT
   rm "$archive"
 fi
