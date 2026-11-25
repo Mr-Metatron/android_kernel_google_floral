@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y bc bison flex libssl-dev libelf-dev lz4 zip cpio
-          sudo fallocate -l 12G /swapfile-floral
+          sudo fallocate -l 48G /swapfile-floral
           sudo chmod 600 /swapfile-floral
           sudo mkswap /swapfile-floral
           sudo swapon /swapfile-floral
