@@ -1352,6 +1352,16 @@ static int add_to_pagemap(unsigned long addr, pagemap_entry_t *pme,
 	return 0;
 }
 
+static bool pagemap_vma_is_sus_map(struct vm_area_struct *vma)
+{
+#ifdef CONFIG_KSU_SUSFS_SUS_MAP
+	return vma->vm_file &&
+		SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file));
+#else
+	return false;
+#endif
+}
+
 static int pagemap_pte_hole(unsigned long start, unsigned long end,
 				struct mm_walk *walk)
 {
@@ -1380,7 +1390,8 @@ static int pagemap_pte_hole(unsigned long start, unsigned long end,
 			break;
 
 		/* Addresses in the VMA. */
-		if (vma->vm_flags & VM_SOFTDIRTY)
+		if ((vma->vm_flags & VM_SOFTDIRTY) &&
+		    !pagemap_vma_is_sus_map(vma))
 			pme = make_pme(0, PM_SOFT_DIRTY);
 		for (; addr < min(end, vma->vm_end); addr += PAGE_SIZE) {
 			err = add_to_pagemap(addr, &pme, pm);
@@ -1439,6 +1450,10 @@ static int pagemap_pmd_range(pmd_t *pmdp, unsigned long addr, unsigned long end,
 	spinlock_t *ptl;
 	pte_t *pte, *orig_pte;
 	int err = 0;
+
+	/* Hidden mappings still occupy one pagemap entry per virtual page. */
+	if (pagemap_vma_is_sus_map(vma))
+		return pagemap_pte_hole(addr, end, walk);
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	ptl = pmd_trans_huge_lock(pmdp, vma);
@@ -1534,6 +1549,9 @@ static int pagemap_hugetlb_range(pte_t *ptep, unsigned long hmask,
 	u64 flags = 0, frame = 0;
 	int err = 0;
 	pte_t pte;
+
+	if (pagemap_vma_is_sus_map(vma))
+		return pagemap_pte_hole(addr, end, walk);
 
 	if (vma->vm_flags & VM_SOFTDIRTY)
 		flags |= PM_SOFT_DIRTY;
@@ -1656,9 +1674,6 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 	while (count && (start_vaddr < end_vaddr)) {
 		int len;
 		unsigned long end;
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-		struct vm_area_struct *vma;
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 
 		pm.pos = 0;
 		end = (start_vaddr + PAGEMAP_WALK_SIZE) & PAGEMAP_WALK_MASK;
@@ -1666,15 +1681,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		if (end < start_vaddr || end > end_vaddr)
 			end = end_vaddr;
 		down_read(&mm->mmap_sem);
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-		vma = find_vma(mm, start_vaddr);
-		if (vma && vma->vm_file && SUSFS_IS_INODE_SUS_MAP(file_inode(vma->vm_file)))
-			goto bypass_orig_flow;
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		ret = walk_page_range(start_vaddr, end, &pagemap_walk);
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP
-bypass_orig_flow:
-#endif // #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		up_read(&mm->mmap_sem);
 		start_vaddr = end;
 
