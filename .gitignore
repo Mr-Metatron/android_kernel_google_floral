@@ -136,3 +136,8 @@ kernel/configs/android-*.cfg
 #Ignoring Android.bp link file
 #
 Android.bp
+
+# Runtime build evidence is distributed through Actions Artifacts.
+/docs/evidence/
+/docs/stage1-delivery-verification.json
+__pycache__/
