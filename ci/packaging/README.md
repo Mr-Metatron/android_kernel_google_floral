@@ -19,7 +19,9 @@ FLORAL_BOOT_IMAGE_URL=https://example.org/current-rom-boot.img \
 FLORAL_BOOT_DEVICE=flame ci/scripts/package.sh stage1
 ```
 
-此路径额外需要 `curl` 和 `qemu-arm`（Debian / Ubuntu 的 `qemu-user` 包）。`repack-boot.sh` 通过 QEMU 执行固定 AnyKernel3 自带的静态 ARM32 `magiskboot`：`unpack -n -h` 保留压缩组件，替换 `kernel` 为最终 `Image.lz4`，然后以 `PATCHVBMETAFLAG=false repack -n` 重打包。boot 格式、压缩及 AVB 处理由上游工具负责。
+此路径额外需要 `curl` 和 `qemu-arm`（Debian / Ubuntu 的 `qemu-user` 包）。`repack-boot.sh` 下载后检查 Android 魔数、boot v2 和 4096 字节页，再通过 QEMU 执行固定 AnyKernel3 自带的静态 ARM32 `magiskboot`：`unpack -n -h` 保留压缩组件，替换 `kernel` 为最终 `Image.lz4`，然后以 `PATCHVBMETAFLAG=false repack -n` 重打包。boot 格式、压缩及 AVB 处理由上游工具负责。
+
+输入 boot 必须匹配当前 ROM 和机型。magiskboot 保留原 AVB 描述符摘要，`PATCHVBMETAFLAG=false` 保持原 flags；替换内核后的镜像沿用可刷自定义内核的解锁与验证配置。此流程没有重新计算 AVB 描述符摘要或重新签名。
 
 额外生成的 `Fastboot-<device>-stage1.zip` 含 `boot.img`、下载的原 `stock-boot.img` 和使用说明。只提供一个机型的 URL 就只生成该机型的 Fastboot 包。刷入前核对机型和活动槽位，保留当前 boot 备份；可先 `fastboot boot boot.img` 试启动，再显式指定已核对的槽位持久刷入。回退时向同一槽位刷回对应原 boot。
 

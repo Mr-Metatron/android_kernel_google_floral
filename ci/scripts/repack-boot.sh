@@ -13,6 +13,9 @@ work=$(mktemp -d "$output/.repack-XXXXXX")
 trap 'rm -rf "$work"' EXIT
 curl --fail --location --retry 3 --proto '=https' --proto-redir '=https' \
   --output "$work/stock-boot.img" "$url"
+[[ $(head -c 8 "$work/stock-boot.img") == 'ANDROID!' &&
+   $(od -An -tu4 -j36 -N8 "$work/stock-boot.img" | xargs) == '4096 2' ]] ||
+  { echo "Expected an Android boot v2 image with 4096-byte pages." >&2; exit 1; }
 (
   cd "$work"
   qemu-arm "$magiskboot" unpack -n -h stock-boot.img
