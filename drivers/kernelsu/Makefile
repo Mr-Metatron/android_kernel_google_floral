@@ -6,39 +6,28 @@ kernelsu-y := ksu.o
 CFLAGS_ksu.o += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
 CFLAGS_ksu.o += -I$(objtree)/security/selinux
 
+# Nova includes SELinux's generated class/permission definitions. Generate a
+# local copy so a clean parallel or single-object build has explicit ordering.
+$(obj)/ksu.o: $(obj)/flask.h
+quiet_cmd_ksu_flask = GEN     $(obj)/flask.h $(obj)/av_permissions.h
+      cmd_ksu_flask = $< $(obj)/flask.h $(obj)/av_permissions.h
+targets += flask.h av_permissions.h
+$(obj)/flask.h: scripts/selinux/genheaders/genheaders FORCE
+	$(call if_changed,ksu_flask)
+
 KDIR := $(KDIR)
 MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
 $(info -- KDIR: $(KDIR))
 $(info -- MDIR: $(MDIR))
 
-REPO_OWNER  := SukiSU-Nova
-REPO_NAME   := SukiSU-Nova
-REPO_BRANCH := main
-
-VERSION_BASE    := 30000
-VERSION_OFFSET  := 4001
-
-GIT_BIN  := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
-CURL_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin curl
-
-KSU_SRC := $(if $(filter $(srctree),$(src)),$(src),$(srctree)/$(src))
-KSU_SRC := $(if $(wildcard $(KSU_SRC)/../.git),$(KSU_SRC),$(MDIR))
-
-git_short_sha    = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
-git_branch       = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --abbrev-ref HEAD 2>/dev/null)
-git_commit_count = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-list --count $(REPO_BRANCH) 2>/dev/null)
-git_latest_tag   = $(shell cd $(KSU_SRC) && $(GIT_BIN) describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-
-$(shell cd $(KSU_SRC) 2>/dev/null && [ -f ../.git/shallow ] && $(GIT_BIN) fetch --unshallow 2>/dev/null)
-
-GITHUB_API_BASE  := https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)
-KSU_GITHUB_VER   := $(shell $(CURL_BIN) -s "$(GITHUB_API_BASE)/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
-GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(REPO_BRANCH)&per_page=1" 2>/dev/null | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
-LOCAL_COUNT     := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
-KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),41000)
-VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),3.0.0)
-KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)
+# Frozen identity for the floral stage1 build.  Upstream Makefile computes
+# 30000 + main commit count - 4001; main 1439545f12bffe0263690ba862139b70ee5f20cf
+# has 4008 commits.  Keep it independent of network, checkout path and date.
+# Kernel source: builtin-new 5a3ec4145059ed2c4f22c70a16a28a616e104c33.
+REPO_NAME := SukiSU-Nova
+KSU_VERSION := 30007
+KSU_VERSION_FULL := v3.0.0-5a3ec414@builtin-new-floral
 $(info -- $(REPO_NAME) version: $(KSU_VERSION) [$(KSU_VERSION_FULL)])
 
 CFLAGS_ksu.o += -DKSU_VERSION=$(KSU_VERSION)
@@ -70,13 +59,15 @@ else
 $(info -- $(REPO_NAME): using Unknown)
 endif
 
-# KPM is only built on 5.10+; older kernels compile it out regardless of
-# CONFIG_KPM (see KSU_CAN_USE_KPM in kernel_compat.h).
+# Floral 4.14 built-in KPM uses a dedicated kernel-only entry. The matched
+# KernelPatch image is required; other old kernels retain the upstream gate.
 ifeq ($(CONFIG_KPM), y)
 ifeq ($(KERNEL_TYPE), GKI 2.0)
 $(info -- KPM is enabled)
+else ifeq ($(KERNEL_VERSION)-$(CONFIG_ARM64)-$(CONFIG_KSU), 4.14-y-y)
+$(info -- KPM is enabled: floral 4.14 dedicated bridge)
 else
-$(info -- KPM is disabled: requires Linux 5.10+)
+$(info -- KPM is disabled: unsupported kernel/bridge combination)
 endif
 else
 $(info -- KPM is disabled)
@@ -168,8 +159,7 @@ CFLAGS_ksu.o += $(call cc-option, -Wno-deprecated-octal-literals)
 # dont be too strict
 CFLAGS_REMOVE_ksu.o += -Werror
 
-# so we can see stack use atleast, as we disable all stack safety here
-CFLAGS_ksu.o += $(call cc-option, -Wframe-larger-than=1024)
+# Inherit the target kernel FRAME_WARN threshold and hardening flags.
 
 # to make sure we can use builtins
 CFLAGS_REMOVE_ksu.o += -fno-builtin
@@ -207,25 +197,9 @@ endif
 # comment it out and put your cpu / arch here
 # CFLAGS_ksu.o += -mcpu=cortex-a76 -mtune=cortex-a76
 
-ifneq ($(CONFIG_KSU_DEBUG),y)
-# strip, remove tracing / profiling
-# comment out if proper backtrace is needed
-CFLAGS_ksu.o += -g0 -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer
-CFLAGS_ksu.o += $(call cc-option, -momit-leaf-frame-pointer)
-
-# no profiling
-CFLAGS_REMOVE_ksu.o += $(CC_FLAGS_FTRACE)
-CFLAGS_REMOVE_ksu.o += -pg
-
-# no need for stack init
-CFLAGS_REMOVE_ksu.o += -ftrivial-auto-var-init=pattern
-CFLAGS_REMOVE_ksu.o += -ftrivial-auto-var-init=zero
-CFLAGS_REMOVE_ksu.o += -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang
-
-# if cflags can be macro'd, this will be called 'TRUST_ME'
-CFLAGS_ksu.o += -fno-stack-protector -fno-stack-check
-CFLAGS_REMOVE_ksu.o += -fsanitize=shadow-call-stack
-endif # CONFIG_KSU_DEBUG
+# Preserve the LOS stack protector, Shadow Call Stack, stack initialization,
+# frame pointer, unwind information and tracing options in release builds too.
+# The parent kernel owns these flags; do not override them per object.
 
 ## For susfs stuff ##
 ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
