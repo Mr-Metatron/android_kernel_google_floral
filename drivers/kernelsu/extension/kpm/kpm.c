@@ -20,6 +20,28 @@
 /* Legacy INFO has no capacity argument. Existing ksud allocates 256 bytes. */
 #define KPM_INFO_LEN 256
 
+#if defined(CONFIG_ARM64) && defined(CONFIG_KPM) && \
+    LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) && !defined(MODULE)
+/* A permanent kernel-to-kernel entry for the non-wrapper floral ABI. This
+ * function is never placed in a syscall table. Exporting it keeps its typed
+ * entry through full LTO; the matching KP build hooks it before rest_init.
+ * Keep the normal CFI, SCS and stack-protector compiler flags on this entry.
+ */
+long noinline __used sukisu_kpm_legacy_entry(const struct pt_regs *regs);
+long noinline __used sukisu_kpm_legacy_entry(const struct pt_regs *regs)
+{
+    if (!regs || processor_mode(regs) != PSR_MODE_EL1h)
+        return -EINVAL;
+    if (regs->regs[0] != SUKISU_KPM_SUPERCALL_MAGIC ||
+        regs->regs[6] != SUKISU_KPM_SUPERCALL_MAGIC2 ||
+        regs->regs[7] != SUKISU_KPM_SUPERCALL_MAGIC3 ||
+        regs->regs[8] != SUKISU_KPM_ABI_VERSION)
+        return -EPROTO;
+    return -EOPNOTSUPP;
+}
+EXPORT_SYMBOL_GPL(sukisu_kpm_legacy_entry);
+#endif
+
 long __nocfi sukisu_kpm_bridge(unsigned long op, unsigned long a1, unsigned long a2,
                               unsigned long a3, unsigned long a4)
 {
@@ -30,9 +52,15 @@ long __nocfi sukisu_kpm_bridge(unsigned long op, unsigned long a1, unsigned long
     handler_t fn = READ_ONCE(handler);
 
     if (!fn) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0) && !defined(MODULE)
+        fn = (handler_t)find_kernel_symbol_exact("sukisu_kpm_legacy_entry");
+        if (!fn) fn = (handler_t)find_kernel_symbol_exact("sukisu_kpm_legacy_entry.cfi_jt");
+        if (!fn) fn = (handler_t)find_kernel_symbol_exact("sukisu_kpm_legacy_entry.cfi");
+#else
         fn = (handler_t)find_kernel_symbol_exact("__arm64_sys_truncate");
         if (!fn) fn = (handler_t)find_kernel_symbol_exact("__arm64_sys_truncate.cfi_jt");
         if (!fn) fn = (handler_t)find_kernel_symbol_exact("__arm64_sys_truncate.cfi");
+#endif
         if (!fn) return -EOPNOTSUPP;
         WRITE_ONCE(handler, fn);
     }
@@ -42,8 +70,8 @@ long __nocfi sukisu_kpm_bridge(unsigned long op, unsigned long a1, unsigned long
     regs.regs[7] = SUKISU_KPM_SUPERCALL_MAGIC3;
     regs.regs[8] = SUKISU_KPM_ABI_VERSION;
     regs.regs[1] = SUKISU_KPM_PROBE;
-    /* Without KP this is a real truncate handler: the magic is a non-userspace
-     * address and yields an error, not a function pointer. */
+    /* Probe first. Without the matching KP hook, the legacy entry returns
+     * EOPNOTSUPP; the wrapper path rejects the non-userspace magic address. */
     if (fn(&regs) != SUKISU_KPM_ABI_VERSION) return -EOPNOTSUPP;
     regs.regs[1] = op;
     regs.regs[2] = a1;

@@ -352,13 +352,15 @@ struct ksu_static_key_true_false { struct static_key key; };
 #endif
 
 /*
- * KPM (extension/kpm) relies on kernel interfaces that are only supported
- * on 5.10+. Compile its call sites out entirely below that, regardless of
- * CONFIG_KPM, so 3.x/4.x/5.4 trees never pull in its headers, code or
- * runtime hooks. CPU spoof is not gated: cpu_spoof.c selects the kernel
- * ABI it needs per version and works back to 3.4.
+ * The original KPM bridge uses the 5.10+ arm64 syscall wrapper. The floral
+ * 4.14 built-in integration supplies a separate kernel-only pt_regs entry;
+ * its matching KernelPatch build must hook that entry. Other old kernels
+ * retain the upstream gate. CPU spoof selects its ABI independently.
  */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || \
+    (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0) && \
+     LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0) && \
+     defined(CONFIG_ARM64) && defined(CONFIG_KPM) && !defined(MODULE))
 #define KSU_CAN_USE_KPM
 #endif
 

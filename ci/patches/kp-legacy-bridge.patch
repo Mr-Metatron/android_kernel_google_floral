@@ -1,0 +1,25 @@
+diff --git a/kernel/patch/sukisu/sukisu.c b/kernel/patch/sukisu/sukisu.c
+index 3f5bde9..ad85ca3 100644
+--- a/kernel/patch/sukisu/sukisu.c
++++ b/kernel/patch/sukisu/sukisu.c
+@@ -118,7 +118,19 @@ int sukisu_kpm_supercall_install(void)
+     int rc;
+     unsigned long addr;
+     if (installed) return 0;
+-    if (!has_syscall_wrapper) return -EOPNOTSUPP;
++    if (!has_syscall_wrapper) {
++        /* Floral 4.14 built-in Nova provides an exported pt_regs entry.
++         * This is not a syscall wrapper: keep has_syscall_wrapper unchanged
++         * so all original 4.14 syscall helpers retain their native ABI.
++         */
++        addr = kallsyms_lookup_name("sukisu_kpm_legacy_entry");
++        if (!addr) addr = kallsyms_lookup_name("sukisu_kpm_legacy_entry.cfi_jt");
++        if (!addr) addr = kallsyms_lookup_name("sukisu_kpm_legacy_entry.cfi");
++        if (!addr) return -EOPNOTSUPP;
++        rc = hook_wrap1((void *)addr, before_supercall, 0, 0);
++        if (!rc) installed = 1;
++        return rc;
++    }
+     /* Hook the handler itself: a kernel direct call never enters invoke_syscall
+      * or the global EL0 dispatcher. Prefer inline over the syscall table. */
+     addr = kallsyms_lookup_name("__arm64_sys_truncate");
