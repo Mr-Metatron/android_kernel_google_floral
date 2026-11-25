@@ -1,0 +1,26 @@
+{
+  "run_id": 45576117950,
+  "source_commit": "45acab9c1ca1173b8c8780517db4cd57ab4b5ee6",
+  "job_id": 139074358143,
+  "last_build_phase": "LTO vmlinux.o",
+  "lto_started_utc": "2026-11-25T08:42:13Z",
+  "last_snapshot_utc": "2026-11-25T08:47:32Z",
+  "last_snapshot": {
+    "online_cpus": 4,
+    "make_jobs": 4,
+    "ram_total_mib": 15983,
+    "ram_available_mib": 158,
+    "swap_total_mib": 15359,
+    "swap_used_mib": 12859,
+    "swap_free_mib": 2500,
+    "ld_lld_rss_kib": 15375768,
+    "disk_available_gib_rounded": 67,
+    "cgroup_oom": 0,
+    "cgroup_oom_kill": 0
+  },
+  "termination_utc": "2026-11-25T08:47:45Z",
+  "termination": "Runner shutdown signal and exit 143; subsequent artifact upload was skipped.",
+  "interpretation": "The last recorded state shows substantial RAM and swap pressure during full LTO. The logs do not directly record an OOM kill or state the infrastructure shutdown cause.",
+  "change": "Increase the additional swapfile from 12 GiB to 48 GiB, using the recorded free disk capacity. Retain four make jobs, the fixed toolchain, full LTO, CFI, SCS and every kernel configuration value. Keep 30-second resource sampling for verification.",
+  "source_code_changed_for_resource_adjustment": false
+}
