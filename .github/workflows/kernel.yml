@@ -23,6 +23,11 @@ on:
         type: string
         required: false
         default: ubuntu-24.04
+      make_jobs:
+        description: Parallel make jobs (use 8 for the dedicated 8-CPU runner)
+        type: choice
+        options: ['1', '2', '4', '8']
+        default: '4'
 
 permissions:
   contents: read
@@ -37,7 +42,7 @@ jobs:
     runs-on: ${{ inputs.runner_label || 'ubuntu-24.04' }}
     timeout-minutes: 180
     env:
-      FLORAL_JOBS: '4'
+      FLORAL_JOBS: ${{ inputs.make_jobs || '4' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
