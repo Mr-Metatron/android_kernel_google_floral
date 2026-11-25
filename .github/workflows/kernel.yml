@@ -28,6 +28,15 @@ on:
         type: string
         required: false
         default: auto
+      boot_image_url:
+        description: Optional HTTPS URL of the current ROM boot.img for a Fastboot package
+        type: string
+        required: false
+      boot_device:
+        description: Device for the optional boot.img (ignored when URL is empty)
+        type: choice
+        options: [flame, coral]
+        default: flame
 
 permissions:
   contents: read
@@ -43,6 +52,8 @@ jobs:
     timeout-minutes: 180
     env:
       FLORAL_JOBS: ${{ inputs.make_jobs || 'auto' }}
+      FLORAL_BOOT_IMAGE_URL: ${{ inputs.boot_image_url }}
+      FLORAL_BOOT_DEVICE: ${{ inputs.boot_device || 'flame' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -71,6 +82,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y bc bison flex libssl-dev libelf-dev lz4 zip cpio
+          if [[ -n "$FLORAL_BOOT_IMAGE_URL" ]]; then
+            sudo apt-get install -y qemu-user
+          fi
           memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
           if (( memory_kib < 50331648 )); then
             sudo fallocate -l 48G /swapfile-floral
@@ -88,7 +102,7 @@ jobs:
           else
             bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
           fi
-      - name: Package flashable images
+      - name: Package AnyKernel3 and optional Fastboot image
         if: steps.select.outputs.stage == 'stage1'
         run: |
           bash ci/scripts/kpm.sh

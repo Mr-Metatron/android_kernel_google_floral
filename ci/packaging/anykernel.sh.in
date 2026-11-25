@@ -31,7 +31,7 @@ case "$BLOCK" in
   *) abort "Refusing a target other than the active boot partition." ;;
 esac;
 
-ui_print "Build has not been tested on a physical device.";
+ui_print "Validate this build on the device after installation.";
 ui_print "Replacing the kernel in boot$SLOT; keeping the current ramdisk.";
 
 # split_boot and flash_boot omit CPIO extraction and CPIO archive rebuilding.

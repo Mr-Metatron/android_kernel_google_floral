@@ -1,35 +1,28 @@
-# Pixel 4 boot 与 AnyKernel3 打包
+# Pixel 4 内核打包
 
-构建先完成 `ci/scripts/build.sh stage1`，随后执行 KPM 的 `ci/scripts/kpm.sh`，最后执行 `ci/scripts/package.sh stage1`。这些脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；AnyKernel3 路径还可用 `FLORAL_ANYKERNEL` 指定。打包读取最终 `Image.lz4`，核对 KPM manifest 的源提交和哈希，并要求原生 `Image.unpatched`、`Image.lz4.unpatched` 已保留。`baseline` 模式读取基线构建输出，无 KPM patch 要求。
+依次运行 `ci/scripts/build.sh stage1`、`ci/scripts/kpm.sh`、`ci/scripts/package.sh stage1`。脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；`FLORAL_ANYKERNEL` 可指定已准备好的 AnyKernel3 checkout。打包要求配置、链接、Nova linked、单份 `module-abi.json` 检查通过，并确认 `kpm-manifest.json` 中补丁已完成、桥接 ABI 和源码提交一致。
 
-Stage 1 构建还会生成 `nova-protection-check.json` 与 `module-abi-flame.json`、`module-abi-coral.json`。打包要求 Nova 报告为通过的 `linked` 检查，两份模块报告通过且各自 ROM 与固定来源一致；仅有对象检查报告不会进入打包。上述报告均放在 `$FLORAL_DIST` 根目录，与 `build-manifest.json`、`kpm-manifest.json` 同级。
+默认打包不访问网络，不下载 stock boot。`$FLORAL_DIST/packages/` 只生成 `AnyKernel3-flame-stage1.zip`、`AnyKernel3-coral-stage1.zip` 和包外的 `SHA256SUMS`。每个最终 ZIP 计算一次 SHA256；包内没有文件校验和或相互套用的 manifest。最终 `Image.lz4`、配置、符号表和检查报告保留在 `$FLORAL_DIST`，随 GitHub Actions Artifacts 上传，运行期报告不提交到源码仓库。`baseline` 打包无需 Nova / KPM / vendor ABI 报告。
 
-`ci/sources.json` 固定两机型的官方 ROM、boot SHA256 和 AnyKernel3 提交。缺少官方 boot 时下载到依赖缓存，下载及已有缓存都必须通过同一 SHA256 检查。AnyKernel3 的受用文件必须与固定 checkout 一致。
+## AnyKernel3 与内核格式
 
-## 独立 boot.img
+AnyKernel3 提交固定在 `ci/sources.json`。安装器检查机型、Android 17、活动 A/B 槽位以及 boot v2 / 4096 字节页 / 64 MiB 布局，调用上游 `split_boot` / `flash_boot` 替换内核并保留当前 ramdisk。它不安装原生模块，不写 vendor、dtbo、vbmeta 分区；保持现有验证配置，关闭额外的 Magisk kernel / DTB 自动改写。
 
-`boot_image.py` 直接解析并重打包 Pixel 4 的 4096 页、v2 header、64 MiB boot 布局，无 ramdisk 解包或 DTB 重编译。仅更新内核、内核长度、boot SHA1 ID、可选 recovery_dtbo 派生偏移，以及未签名 AVB 的 boot 哈希描述符和 footer 偏移。现有签名 metadata 会被拒绝，避免留下已失效的签名。所有其他 header 字节、压缩 ramdisk、DTB、second / recovery_dtbo、对应 padding、AVB 属性及 flags 均保留并读回校验。
+继续交付 `Image.lz4`：固定的 [官方设备配置](https://github.com/LineageOS/android_device_google_coral/blob/54913ec2b6e46e9d8d09ae21a15a3d1f7ca634dc/BoardConfig-common.mk) 使用该文件，并将 DTB 放在 boot v2 的独立段中。此布局不使用附加 DTB 的 `Image.lz4-dtb`。
 
-结构与校验算法依据 AOSP [bootimg.h](https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/heads/main/include/bootimg/bootimg.h)、[mkbootimg.py](https://android.googlesource.com/platform/system/tools/mkbootimg/+/refs/heads/main/mkbootimg.py)、[avb_hash_descriptor.h](https://android.googlesource.com/platform/external/avb/+/refs/heads/main/libavb/avb_hash_descriptor.h) 与 [avbtool.py](https://android.googlesource.com/platform/external/avb/+/refs/heads/main/avbtool.py)。代码只接受本项目实际使用的布局；没有通用刷机、解锁或修改验证配置功能。
+## 可选 Fastboot boot.img
 
-## AnyKernel3 ZIP
-
-每个 ZIP 只放一个机型标识与最终 `Image.lz4`，使用固定 AnyKernel3 的 `split_boot` / `flash_boot`，保留当前 ramdisk 的 CPIO 内容，不进行 CPIO 提取、编辑或重建。组件压缩及 AVB 处理沿用固定上游 magiskboot，具体行为见其 [工具说明](https://github.com/topjohnwu/Magisk/blob/master/docs/tools.md)。因此设备端结果不承诺与独立 boot.img 字节相同；独立 boot 的 AVB 校验报告也不覆盖设备端生成的镜像。
-
-安装器校验机型、Android 17、活动 `_a` / `_b` 槽位、64 MiB 和 v2 boot 布局。`do.modules=0`，不带模块安装包、ramdisk 变更、dtbo 或 vendor 产物。关闭上游 Magisk 自动 kernel / DTB 改写，明确保持 AVB flags。只调用 `flash_boot`，不调用附带其他分区处理的 `write_boot`。
-
-## 产物与验证
-
-输出在 `$FLORAL_DIST/packages/`：`flame/`、`coral/` 各有 boot.img、AnyKernel3 ZIP、README 和 boot-validation.json；`rollback/` 保留对应固定官方 boot；根目录提供 build / package / KPM manifest 与 SHA256SUMS。最终及未 patch 的原始 Image、配置、日志、Module.symvers 等仍由上级构建输出归档。
-
-执行真实官方镜像 roundtrip 与布局校验：
+需要独立镜像时，在手动 workflow 输入中提供当前 ROM、当前机型可直接下载的 HTTPS boot.img URL，并选择 `flame` 或 `coral`。本地运行可设置：
 
 ```sh
-python3 ci/scripts/test-boot-image.py \
-  --stock-dir "$FLORAL_DEPS/stock" \
-  --report "$FLORAL_DIST/packager-selftest.json"
+FLORAL_BOOT_IMAGE_URL=https://example.org/current-rom-boot.img \
+FLORAL_BOOT_DEVICE=flame ci/scripts/package.sh stage1
 ```
 
-传入 `--avbtool /path/to/aosp/avbtool.py` 可额外使用独立 AOSP 工具验证偏移变化后的 AVB 哈希。测试要求 flame / coral 的原内核重包与原始 64 MiB 镜像逐字节一致，模拟内核缩小及增大一页，核对所有非内核段，并确认损坏 SHA1、AVB digest 和签名 metadata 会被拒绝。模拟内核只用于临时布局测试，不生成可刷入阶段产物。
+此路径额外需要 `curl` 和 `qemu-arm`（Debian / Ubuntu 的 `qemu-user` 包）。`repack-boot.sh` 通过 QEMU 执行固定 AnyKernel3 自带的静态 ARM32 `magiskboot`：`unpack -n -h` 保留压缩组件，替换 `kernel` 为最终 `Image.lz4`，然后以 `PATCHVBMETAFLAG=false repack -n` 重打包。boot 格式、压缩及 AVB 处理由上游工具负责。
 
-打包 manifest 和说明始终保留 `device_tested=false`。vendor 模块的 CRC / vermagic 静态检查在 Stage 1 打包前完成；设备实际装载、启动、Root、KPM load / list / info / control / event / unload、SUSFS 及日用功能由阶段验收记录另行确认。
+额外生成的 `Fastboot-<device>-stage1.zip` 含 `boot.img`、下载的原 `stock-boot.img` 和使用说明。只提供一个机型的 URL 就只生成该机型的 Fastboot 包。刷入前核对机型和活动槽位，保留当前 boot 备份；可先 `fastboot boot boot.img` 试启动，再显式指定已核对的槽位持久刷入。回退时向同一槽位刷回对应原 boot。
+
+## 验收边界
+
+检查报告说明构建、链接与 ABI 的检查结果。本次修正后的产物仍需完成实机启动、Root、SUSFS、KPM 生命周期和日用功能验收。

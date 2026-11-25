@@ -10,4 +10,4 @@ if [[ ! -d "$anykernel" && -d "$deps/AnyKernel3" ]]; then
   anykernel="$deps/AnyKernel3"
 fi
 python3 "$root/ci/scripts/package_artifacts.py" \
-  --root "$root" --deps "$deps" --dist "$dist" --anykernel "$anykernel" --stage "$stage"
+  --root "$root" --dist "$dist" --anykernel "$anykernel" --stage "$stage"
