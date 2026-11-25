@@ -1,0 +1,71 @@
+name: Floral kernel
+
+on:
+  push:
+    branches: ['feature/stage1-nova-full', 'feature/stage2-native-containers', 'feature/stage3-selected-optimizations']
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**.md']
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Build stage
+        type: choice
+        options: [baseline, stage1]
+        default: stage1
+      source_ref:
+        description: Optional source commit or ref
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: floral-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Select build and fetch baseline
+        id: select
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage }}
+        run: |
+          stage=${REQUESTED_STAGE:-stage1}
+          if [[ ! -f drivers/kernelsu/ksu.c ]]; then stage=baseline; fi
+          echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          git fetch --depth 1 origin bb17b7de4b570f2c0c32ddba0543cac03c58dd84
+      - name: Install host build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev lz4 zip cpio
+          sudo fallocate -l 12G /swapfile-floral
+          sudo chmod 600 /swapfile-floral
+          sudo mkswap /swapfile-floral
+          sudo swapon /swapfile-floral
+      - name: Prepare frozen dependencies
+        run: bash ci/scripts/prepare.sh
+      - name: Compile and check
+        run: bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
+      - name: Package flashable images
+        if: steps.select.outputs.stage == 'stage1'
+        run: bash ci/scripts/package.sh
+      - name: Upload build evidence and successful artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: floral-${{ steps.select.outputs.stage }}-${{ github.sha }}
+          path: .ci-dist/
+          retention-days: 30
+          if-no-files-found: warn
+          include-hidden-files: true

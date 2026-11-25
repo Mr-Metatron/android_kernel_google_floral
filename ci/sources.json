@@ -1,0 +1,17 @@
+{
+  "kernel": {"repository": "https://github.com/LineageOS/android_kernel_google_msm-4.14", "commit": "bb17b7de4b570f2c0c32ddba0543cac03c58dd84"},
+  "device": {"repository": "https://github.com/LineageOS/android_device_google_coral", "commit": "54913ec2b6e46e9d8d09ae21a15a3d1f7ca634dc"},
+  "clang": {"repository": "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86", "commit": "29182889399818f97baa65ea238c80e8117981eb", "directory": "clang-r596125", "version": "22.0.2"},
+  "gcc64": {"repository": "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9", "commit": "be79a1c2ee1ff7a110b653a682c236979539acd2"},
+  "gcc32": {"repository": "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9", "commit": "da10d2bd65e2c57d338fb6bb712ff522ad4e34e7"},
+  "nova": {"repository": "https://github.com/SukiSU-Nova/SukiSU-Nova", "commit": "5a3ec4145059ed2c4f22c70a16a28a616e104c33", "kernel_version": 30007, "manager_release": "v3.0.0", "manager_apk_sha256": "1202adb835a64d8b3df703da7884a2966f8728c131cffb29fb5f48d31d81ac85"},
+  "susfs": {"repository": "https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd", "commit": "bbe032eb06c50d24a9207bf2ece5e25cf2460bd0", "version": "2.4.0", "patch_blob": "7e09938e2326389d911bb9086dd5d47a038afe9a"},
+  "kp": {"repository": "https://github.com/SukiSU-Nova/SukiSU_KernelPatch_patch", "commit": "1c5b608916357ac86a94cc736e235db1fac4a29d"},
+  "anykernel": {"repository": "https://github.com/osm0sis/AnyKernel3", "commit": "41f04bdb4ee30a44e429c2c1131d5e8bb32b15f1"},
+  "stock": {
+    "flame": {"rom": "lineage-24.0-20261119-nightly-flame", "boot_url": "https://mirrorbits.lineageos.org/full/flame/20261119/boot.img", "boot_sha256": "818f69393c1914804867e1087161e654c69fff8239e48ba32c9ae29bbf3f3bba", "manifest_sha256": "95d1dea81aaf6252eb393d9f3253868ba2d4efd58060b04b838f3cc6819f4528"},
+    "coral": {"rom": "lineage-24.0-20261120-nightly-coral", "boot_url": "https://mirrorbits.lineageos.org/full/coral/20261120/boot.img", "boot_sha256": "a947cf5952e1dcd817ef73421dfe3cccf65894aa6c1aa57c18f1ee47c7b2efbf", "manifest_sha256": "d0e93637b583873a5830c6c531f1e8c395d6019224dba76b428fed0531eea360"}
+  },
+  "stock_kernel_release": "4.14.357-openela-gbb17b7de4b57",
+  "source_date_epoch": 1792179815
+}
