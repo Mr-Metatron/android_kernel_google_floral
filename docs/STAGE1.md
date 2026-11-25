@@ -77,7 +77,11 @@ CI 先完成原生内核链接与保护检查，再编译匹配的 KP、核对�
 
 ## 官方基线对照
 
-官方原始源码 `bb17b7de4b570f2c0c32ddba0543cac03c58dd84` 的完整对照构建正在 [run 45598514054](https://github.com/Mr-Metatron/android_kernel_google_floral/actions/runs/45598514054) 执行，使用同一台 Colab CPU HIGHMEM 实例、相同冻结工具链、GNU target 与保护配置。源码由 `bda78657e` 的流水线独立归档到短工作目录，`make_jobs=auto` 已解析为 8；该项尚待完整链接和下载后的独立 ABI 核验。基线与已成功的阶段一构建分别使用独立输出目录。
+官方原始源码 `bb17b7de4b570f2c0c32ddba0543cac03c58dd84` 的完整对照构建已在 [run 45598514054](https://github.com/Mr-Metatron/android_kernel_google_floral/actions/runs/45598514054) 成功完成，时间为 2026-11-25 19:25（Asia/Singapore）。它使用同一台 Colab CPU HIGHMEM 实例、相同冻结工具链、GNU target 与保护配置。源码由 `bda78657e` 的流水线独立归档到短工作目录，`make_jobs=auto` 实际解析为 8；基线与阶段一分别使用独立输出目录。
+
+[基线 Artifact](https://github.com/Mr-Metatron/android_kernel_google_floral/actions/runs/45598514054/artifacts/15016248193) 名为 `floral-baseline-bda78657e7b36e465956c20a398809b827438faa`，大小 38,335,996 字节，SHA256 为 `0f068434f6c0ffb867939bd8715c96185405db804816d9b03988d7a9b97954ac`。名称中的提交对应流水线；清单的实际内核 `source_commit` 为上述官方 `bb17b7de…`，`source_dirty=false`。该 Artifact 保存参考内核、配置、符号表和日志，保留至 2026-12-25 19:25:03（Asia/Singapore）。
+
+基线的配置、目标与最终链接三项检查均通过，栈帧告警列表为空；`.config` 与固定原厂内核配置逐字节一致。下载后独立核验 flame、coral 各 27 个模块、2,555 条导入 CRC 和 27 次完整 vermagic，均为零差异。完整 vermagic 为 `4.14.357-openela-gbb17b7de4b57 SMP preempt mod_unload modversions aarch64`。详见 [基线构建读回](evidence/baseline-build-verification.json)、[独立 ABI 报告](evidence/baseline-independent-abi-review.json) 和 [资源采样](evidence/baseline-resource-summary.json)。
 
 ## 冻结来源与提交拆分
 
@@ -138,10 +142,10 @@ Nya 的 ZIP 冻结 SHA256 为 `1953070ec0a3788bc0b0671486c2f0e516bde245792f8ba50
 
 在仓库 Actions 的 **Floral kernel → Run workflow** 中选择 `stage1`，`source_ref` 填固定源码 SHA 或 `feature/stage1-nova-full`；`baseline` 则从固定官方 SHA 构建。默认分支仅登记此工作流，增强内核在阶段分支维护。本次按用户指定使用 Colab 纯 CPU high RAM 实例，资源为 8 CPU、约 51 GiB 物理内存。临时 runner 执行同一套 Actions 构建、检查与归档步骤；依赖和 Actions 均固定提交，产物通过 Actions Artifacts 分发。之前的开发构建已确认完整链接需要超过 12 GiB 额外 swap，因此默认托管 runner 保留 48 GiB 配置。资源调整依据见 [LTO 资源记录](../ci/reference/build-resource-review.json)。默认分支的手动工作流还接受可选 `runner_label`；物理内存达到 48 GiB 时跳过额外 swap。本次 Colab 实例达到此内存阈值，因此未创建额外 swap。阶段一的 66 次资源采样中，LLD 的最大已采样 RSS 为 31.66 GiB，最少可用物理内存为 18.15 GiB，详见 [资源采样摘要](evidence/stage1-resource-summary.json)。
 
-Colab 的临时 runner 应采用短的绝对工作路径，例如 `--work /content/b`。4.14 的 WLAN 构建规则会多次展开源码绝对路径，过长的目录会使单个 shell 命令超过参数长度限制；本次官方基线对照采用缩短独立工作目录的方式重试，编译参数保持一致。
+Colab 的临时 runner 应采用短的绝对工作路径，例如 `--work /content/b`。4.14 的 WLAN 构建规则会多次展开源码绝对路径，过长的目录会使单个 shell 命令超过参数长度限制；本次官方基线对照在缩短独立工作目录后成功，编译参数保持一致。任务结束后临时 runner 已自动注销，构建输出保留。
 
 已解锁设备可通过原有 recovery 的 AnyKernel 安装方式使用对应 ZIP。独立镜像可在 bootloader fastboot 中先核对 `fastboot getvar product` 与 `fastboot getvar current-slot`，再用 `fastboot flash boot boot.img` 写入当前槽位。刷入前备份当前槽位的 boot，以保留原有 ramdisk 改动；同时保留匹配 ROM 的原厂 boot。本次附带的 rollback 文件只对应上表两个固定版本。
 
 将刷前槽位、`ro.build.fingerprint`、刷前 boot 的 SHA256，以及已安装 Manager、Nya、Magic Mount 和 KPM 模块版本记在备份旁。冻结的原厂 vendor 模块清单分别见 [flame](../ci/reference/vendor-modules-flame.json) 与 [coral](../ci/reference/vendor-modules-coral.json)；设备当前记录在刷入前填写。
 
-恢复时优先写回同槽位的刷前 boot 备份，或使用匹配的原厂 boot，并按现有恢复路径禁用 KPM 自加载、普通模块和 preinit，保留授权与配置备份。当前阶段不继续实施容器配置或性能优化。
+恢复时优先写回同槽位的刷前 boot 备份，或使用匹配的原厂 boot，并按现有恢复路径禁用 KPM 自加载、普通模块和 preinit，保留授权与配置备份。

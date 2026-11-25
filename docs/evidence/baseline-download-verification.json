@@ -1,0 +1,38 @@
+{
+  "run_id": 45598514054,
+  "artifact_id": 15016248193,
+  "artifact_name": "floral-baseline-bda78657e7b36e465956c20a398809b827438faa",
+  "archive": "review-workspace/ci-artifacts/run-45598514054/floral-baseline-bda78657-success.zip",
+  "extracted": "review-workspace/ci-artifacts/run-45598514054/extracted",
+  "bytes": 38335996,
+  "sha256": "0f068434f6c0ffb867939bd8715c96185405db804816d9b03988d7a9b97954ac",
+  "github_digest_matches": true,
+  "zip_crc_passed": true,
+  "entries": 19,
+  "files": [
+    "baseline/.config",
+    "baseline/Image",
+    "baseline/Image.lz4",
+    "baseline/Module.symvers",
+    "baseline/System.map",
+    "baseline/build-manifest.json",
+    "baseline/build.log",
+    "baseline/checks-config.json",
+    "baseline/checks-linked.json",
+    "baseline/checks-target.json",
+    "baseline/clang-archive.sha256",
+    "baseline/clang-tree-check.json",
+    "baseline/compiler.sha256",
+    "baseline/config.log",
+    "baseline/kernel-canary-disassembly.txt",
+    "baseline/compiler.txt",
+    "baseline/kernel.config",
+    "baseline/resource-monitor.log",
+    "baseline/target-probe.log"
+  ],
+  "publication_provenance": {
+    "source_report": "download-verification.json",
+    "source_report_sha256": "512a00b69a7d39a3b4534ae67ff7ea01165bafbea1303ad0ab692d37e542fec8",
+    "transformation": "Absolute local paths normalized; runtime resource identifier omitted where present; numerical measurements and validation results unchanged."
+  }
+}
