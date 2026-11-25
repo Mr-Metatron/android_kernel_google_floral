@@ -1,0 +1,68 @@
+{
+  "scope": "Minimal 4.14 ordinary-open redirection repair; no loader, policy, rule format, public layout or exported-symbol changes.",
+  "source_parent_commit": "82a139a7f5764401a45bbe75b1271d1b3b4b7dcf",
+  "los_baseline_commit": "bb17b7de4b570f2c0c32ddba0543cac03c58dd84",
+  "upstream": {
+    "repository": "https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd",
+    "commit": "bbe032eb06c50d24a9207bf2ece5e25cf2460bd0",
+    "patch_blob": "7e09938e2326389d911bb9086dd5d47a038afe9a"
+  },
+  "source_findings": [
+    "The inherited path_openat block called do_last a second time with the already-open file and FILE_OPENED state, reaching the native BUG_ON guard on a successful ordinary target open.",
+    "The inherited redirect symlink loop walked new_s while storing trailing_symlink output in s."
+  ],
+  "repair": {
+    "location": "fs/namei.c:do_filp_open after restore_nameidata",
+    "lookup_identity": "d_backing_inode(filp->f_path.dentry) preserves the path inode used by SUSFS rule registration; file_inode may be a different lower inode after vfs_open/d_real on overlayfs.",
+    "retry": "Use the same dfd/open_flags and one full native LOOKUP_RCU, -ECHILD fallback, -ESTALE/LOOKUP_REVAL sequence per attempt. Each path_openat allocates its own file and starts opened at zero.",
+    "redirect_limit": 1,
+    "special_paths": "O_PATH, __O_TMPFILE and dfd == -1 do not enter the new ordinary-open redirect block; their existing paths are unchanged.",
+    "source_open_semantics": "Retains the inherited source-first open and the caller flags; this repair does not move redirection before source access or redefine create/truncate behavior."
+  },
+  "ownership_review": {
+    "external_filename": "Borrowed caller reference is never putname; assigning the local pathname parameter does not change the caller reference.",
+    "initial_open_failure": "Native cleanup and restore_nameidata run; return the original error without a redirect name or extra fput.",
+    "no_rule_or_uid_mismatch": "Return the original opened file; helper returns NULL and no redirect reference is acquired.",
+    "redirect_name_allocation_failure": "Return the original opened file, preserving the inherited error-pointer handling; never putname an ERR_PTR.",
+    "matched_rule": "Acquire one getname_kernel reference, restore_nameidata has already completed, fput the original file, then reinitialize nameidata for the target.",
+    "target_success_or_failure": "Complete native retries and restore_nameidata, then putname the internally acquired redirect filename exactly once; return the target file or target error.",
+    "no_chaining": "A non-NULL internal redirect filename suppresses another rule lookup on the second attempt.",
+    "independent_review": "nova_core and root reviewed filename/fput ownership, restore/set ordering and native retry semantics; no remaining finding in this change."
+  },
+  "static_comparisons": {
+    "path_openat_byte_identical_to_los_baseline": true,
+    "do_tmpfile_unchanged": true,
+    "do_o_path_unchanged": true,
+    "do_file_open_root_unchanged": true,
+    "config_off_do_filp_open_native_tokens_unchanged": true
+  },
+  "validation": {
+    "compiler": "Android (15071444, +pgo, +bolt, +lto, +mlgo, based on r596125) clang version 22.0.2 (https://android.googlesource.com/toolchain/llvm-project de03d430485c884861198b25459851f429cbdbad)",
+    "target": "fs/namei.o",
+    "make_exit_code": 0,
+    "source_sha256": "9b98d5cc379f927c097e900f4472df4dad3450077143b079d01f595cb8f66fc4",
+    "config_sha256": "7f7017d8af6ad8cbe1c899893f67bb690afc4b909608298e43bdff20f2208e3f",
+    "object_sha256": "72a79fabbe0e1fbdc055504ff0e73b7c526b5e29d674233dbd4a892b7c4f3669",
+    "symversions_sha256": "aeb92e7c6b24c8ddbf352b391a06c93001bce1de8ee998440853cb0fef2ae187",
+    "compile_command_sha256": "c5d61412087f99c8d4023f9fb764e9046c466354b5d8cf8c18181f989a774380",
+    "required_compile_flags": {
+      "-flto": true,
+      "-fsanitize=cfi": true,
+      "-fsanitize=shadow-call-stack": true,
+      "-fstack-protector-strong": true,
+      "-ftrivial-auto-var-init=zero": true,
+      "-Wframe-larger-than=3072": true
+    },
+    "llvm_dis_readback": "passed",
+    "llvm_nm_full_readback": "passed",
+    "stack_warnings": [],
+    "local_build_log_sha256": "660526ee72076b3396ffb45aa858621cb9ff8c8fe1da59782f676ace311f54fd",
+    "existing_build_diagnostic": {
+      "text": "LLVM ERROR: IO failure on output stream: Broken pipe",
+      "origin": "Existing scripts/Makefile.build LLVM_NM | grep -q __ksymtab pipeline; reproduced independently on the valid object. Full llvm-nm and llvm-dis complete successfully.",
+      "changed": false
+    },
+    "full_link": "pending CI for the repaired source",
+    "device_tested": false
+  }
+}
