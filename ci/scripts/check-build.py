@@ -5,8 +5,13 @@ import pathlib
 import re
 import sys
 
+from stack_guard import check_linked_guard, object_target_check
+
 mode, out_arg, dist_arg, stage = sys.argv[1:]
 out, dist = pathlib.Path(out_arg), pathlib.Path(dist_arg)
+if mode not in ('config', 'target', 'linked'):
+    raise SystemExit(f'Unsupported check mode: {mode}')
+dist.mkdir(parents=True, exist_ok=True)
 cfg = (out / '.config').read_text()
 required = ['LTO_CLANG', 'CFI_CLANG', 'SHADOW_CALL_STACK', 'REFCOUNT_FULL',
             'AUDIT', 'MODULES', 'MODVERSIONS', 'CC_STACKPROTECTOR_STRONG',
@@ -20,6 +25,15 @@ for symbol in ['CFI_PERMISSIVE', 'THINLTO', 'KSU_DEBUG']:
 if 'CONFIG_FRAME_WARN=3072\n' not in cfg:
     errors.append('FRAME_WARN differs from 3072')
 result = {'stage': stage, 'mode': mode, 'required_config': required, 'errors': errors}
+if mode in ('target', 'linked'):
+    result['compiler_targets'] = {}
+    for relative in ('fs/open.o', 'fs/namei.o'):
+        try:
+            evidence = object_target_check(out, relative)
+            result['compiler_targets'][relative] = evidence
+            errors.extend(f'{relative}: {error}' for error in evidence['errors'])
+        except (OSError, ValueError, RuntimeError) as exc:
+            errors.append(f'{relative}: {exc}')
 if mode == 'linked':
     log = (dist / 'build.log').read_text(errors='replace')
     warnings = [line for line in log.splitlines() if re.search(r'frame size of .*larger than|frame-larger-than|stack frame size', line)]
@@ -27,9 +41,16 @@ if mode == 'linked':
     if warnings:
         errors.append('FRAME_WARN stack warning requires review')
     symbols = (out / 'System.map').read_text()
-    for symbol in ['__cfi_check', '__cfi_slowpath', '__stack_chk_fail']:
+    for symbol in ['__cfi_check', '__cfi_slowpath', '__stack_chk_fail', '__stack_chk_guard']:
         if not re.search(r'\b' + re.escape(symbol) + r'$', symbols, re.M):
             errors.append(f'missing linked symbol {symbol}')
+    try:
+        guard = check_linked_guard(out / 'vmlinux', ('do_sys_open', 'do_filp_open'),
+                                   dist / 'kernel-canary-disassembly.txt')
+        result['global_stack_guard'] = guard
+        errors.extend(guard['errors'])
+    except (OSError, ValueError, RuntimeError) as exc:
+        errors.append(f'Global stack guard check failed: {exc}')
     if stage == 'stage1':
         command = (out / 'drivers/kernelsu/.ksu.o.cmd').read_text()
         for flag in ['-flto', '-fsanitize=cfi', '-fsanitize=shadow-call-stack',
@@ -44,7 +65,6 @@ if mode == 'linked':
         # SUSFS deliberately hides its names from kallsyms. The full ELF table
         # is checked separately before the KPM patch is applied.
 result['passed'] = not errors
-dist.mkdir(parents=True, exist_ok=True)
 (dist / f'checks-{mode}.json').write_text(json.dumps(result, indent=2) + '\n')
 if errors:
     raise SystemExit('\n'.join(errors))

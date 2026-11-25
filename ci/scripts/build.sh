@@ -29,13 +29,20 @@ if [[ "$stage" == baseline ]]; then
 fi
 # Match the official module release; source identity remains in build-manifest.
 printf '%s\n' '-gbb17b7de4b57' > "$source_dir/.scmversion"
-make_args=(-C "$source_dir" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- DTC_EXT="$deps/dtc/dtc" DTC_OVERLAY_TEST_EXT="$deps/dtc/ufdt_apply_overlay")
+# Leave the 64-bit GCC prefix empty so this tree selects its native
+# aarch64-linux-gnu Clang target. An Android target uses the userspace TLS
+# stack canary ABI; the kernel initializes the global __stack_chk_guard.
+make_args=(-C "$source_dir" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE= CROSS_COMPILE_ARM32=arm-linux-androideabi- DTC_EXT="$deps/dtc/dtc" DTC_OVERLAY_TEST_EXT="$deps/dtc/ufdt_apply_overlay")
 make "${make_args[@]}" floral_defconfig 2>&1 | tee "$dist/config.log"
 if [[ "$stage" == stage1 ]]; then
   "$source_dir/scripts/kconfig/merge_config.sh" -m -O "$out" "$out/.config" "$root/ci/configs/stage1.config" 2>&1 | tee -a "$dist/config.log"
 fi
 make "${make_args[@]}" olddefconfig 2>&1 | tee -a "$dist/config.log"
 python3 "$root/ci/scripts/check-build.py" config "$out" "$dist" "$stage"
+# Check real kernel object commands and LLVM triples before paying for the
+# full build. These objects are reused by the normal build below.
+make "${make_args[@]}" -j"${FLORAL_JOBS:-2}" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
+python3 "$root/ci/scripts/check-build.py" target "$out" "$dist" "$stage"
 set +e
 make "${make_args[@]}" -j"${FLORAL_JOBS:-2}" Image Image.lz4 dtbs modules 2>&1 | tee "$dist/build.log"
 status=${PIPESTATUS[0]}

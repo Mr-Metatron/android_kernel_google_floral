@@ -7,34 +7,13 @@ is an explicit development check and never claims linked-code verification.
 """
 
 import argparse
-import hashlib
 import json
 import pathlib
 import re
 import shlex
-import shutil
-import subprocess
 import sys
 
-
-def run_tool(name, *args):
-    executable = shutil.which(name)
-    if executable is None:
-        raise RuntimeError(f"Required LLVM tool is unavailable: {name}")
-    result = subprocess.run(
-        [executable, *map(str, args)], text=True, capture_output=True, check=False
-    )
-    if result.returncode:
-        raise RuntimeError(f"{name} failed: {result.stderr.strip()[:2000]}")
-    return result.stdout
-
-
-def file_sha256(path):
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from stack_guard import compiler_target_check, file_sha256, guard_instructions, run_tool
 
 
 def read_ir(ir):
@@ -82,9 +61,13 @@ def linked_check(out, dist, ir_functions, result, errors):
         fields = line.split()
         if len(fields) >= 3:
             symbols[fields[0]] = fields[1:]
-    for symbol in ("__cfi_check", "__cfi_slowpath", "__stack_chk_fail"):
+    for symbol in ("__cfi_check", "__cfi_slowpath", "__stack_chk_fail", "__stack_chk_guard"):
         if symbol not in symbols:
             errors.append(f"Final ELF lacks required symbol: {symbol}")
+    if "__stack_chk_guard" not in symbols or "__stack_chk_fail" not in symbols:
+        return
+    guard_address = int(symbols["__stack_chk_guard"][1], 16)
+    failure_address = int(symbols["__stack_chk_fail"][1], 16)
 
     nova_names = {name for name in ir_functions
                   if name.startswith(("ksu_", "kernelsu_", "sukisu_"))}
@@ -116,10 +99,17 @@ def linked_check(out, dist, ir_functions, result, errors):
             proofs["shadow_call_stack"] = {"function": name,
                 "instructions": matches["scs_push"] + matches["scs_pop"]}
             accepted = True
-        if proofs["stack_canary"] is None and matches["stack_canary_failure"]:
-            proofs["stack_canary"] = {"function": name,
-                "instructions": matches["stack_canary_failure"]}
-            accepted = True
+        if matches["stack_canary_failure"]:
+            guard = guard_instructions(assembly, guard_address, failure_address)
+            if guard["tls_guard_loads"]:
+                errors.append(f"{name} uses the Android userspace TLS canary slot")
+                excerpts.append(assembly)
+                break
+            if proofs["stack_canary"] is None and guard["passed"]:
+                proofs["stack_canary"] = {"function": name, "global_guard": guard,
+                    "instructions": guard["global_guard_loads"] + guard["guard_stack_stores"]
+                                    + guard["guard_comparisons"] + guard["stack_canary_failure"]}
+                accepted = True
         if proofs["cfi"] is None and matches["cfi_check"]:
             proofs["cfi"] = {"function": name, "instructions": matches["cfi_check"]}
             accepted = True
@@ -183,6 +173,8 @@ def main():
 
         obj = out / "drivers/kernelsu/ksu.o"
         ir = run_tool("llvm-dis", obj, "-o", "-")
+        result["compiler_target"] = compiler_target_check(command, ir)
+        errors.extend(result["compiler_target"]["errors"])
         functions = read_ir(ir)
         result["object_sha256"] = file_sha256(obj)
         result["llvm_dis_version"] = run_tool("llvm-dis", "--version").strip()
