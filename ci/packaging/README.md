@@ -2,6 +2,8 @@
 
 构建先完成 `ci/scripts/build.sh stage1`，随后执行 KPM 的 `ci/scripts/kpm.sh`，最后执行 `ci/scripts/package.sh stage1`。这些脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；AnyKernel3 路径还可用 `FLORAL_ANYKERNEL` 指定。打包读取最终 `Image.lz4`，核对 KPM manifest 的源提交和哈希，并要求原生 `Image.unpatched`、`Image.lz4.unpatched` 已保留。`baseline` 模式读取基线构建输出，无 KPM patch 要求。
 
+Stage 1 构建还会生成 `nova-protection-check.json` 与 `module-abi-flame.json`、`module-abi-coral.json`。打包要求 Nova 报告为通过的 `linked` 检查，两份模块报告通过且各自 ROM 与固定来源一致；仅有对象检查报告不会进入打包。上述报告均放在 `$FLORAL_DIST` 根目录，与 `build-manifest.json`、`kpm-manifest.json` 同级。
+
 `ci/sources.json` 固定两机型的官方 ROM、boot SHA256 和 AnyKernel3 提交。缺少官方 boot 时下载到依赖缓存，下载及已有缓存都必须通过同一 SHA256 检查。AnyKernel3 的受用文件必须与固定 checkout 一致。
 
 ## 独立 boot.img
@@ -30,4 +32,4 @@ python3 ci/scripts/test-boot-image.py \
 
 传入 `--avbtool /path/to/aosp/avbtool.py` 可额外使用独立 AOSP 工具验证偏移变化后的 AVB 哈希。测试要求 flame / coral 的原内核重包与原始 64 MiB 镜像逐字节一致，模拟内核缩小及增大一页，核对所有非内核段，并确认损坏 SHA1、AVB digest 和签名 metadata 会被拒绝。模拟内核只用于临时布局测试，不生成可刷入阶段产物。
 
-打包 manifest 和说明始终保留 `device_tested=false`。设备启动、Root、KPM load / list / info / control / event / unload、SUSFS、vendor 模块 ABI 及日用功能由阶段验收记录另行确认。
+打包 manifest 和说明始终保留 `device_tested=false`。vendor 模块的 CRC / vermagic 静态检查在 Stage 1 打包前完成；设备实际装载、启动、Root、KPM load / list / info / control / event / unload、SUSFS 及日用功能由阶段验收记录另行确认。

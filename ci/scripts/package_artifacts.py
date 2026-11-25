@@ -128,6 +128,15 @@ def json_bytes(value):
 def device_readme(device, stage, sources, manifest):
     identity = sources["stock"][device]
     label = "Pixel 4" if device == "flame" else "Pixel 4 XL"
+    validation_notes = (
+        f"`module-abi-{device}.json` 记录配套 vendor 模块的 CRC / vermagic 检查，"
+        "`nova-protection-check.json` 记录实际编译及最终机器码检查；这些静态检查在打包前完成。"
+        "KPM 内核原始备份保留在 `Image.unpatched` 与 `Image.lz4.unpatched`，"
+        "最终刷入版本由 `kpm-manifest.json` 追溯。设备上的实际模块装载与功能仍待验收。"
+        if stage == "stage1" else
+        "本包使用固定 LOS 基线构建的内核，未进行 Nova / KPM 集成；"
+        "构建检查记录在 `checks-config.json` 与 `checks-linked.json`，设备验收另行记录。"
+    )
     return f"""# {label} / {device} / {stage}
 
 本包尚未经过实机启动、Root、KPM 生命周期、SUSFS 或日用验收。
@@ -154,7 +163,7 @@ AnyKernel3 ZIP 可通过兼容的 recovery / 现有内核刷写工具安装，�
 
 ## 验收状态
 
-构建与打包结果见 `build-manifest.json`、`boot-validation.json` 和 SHA256SUMS；上级目录中的 `module-abi-{device}.json` 记录配套 vendor 模块的 CRC / vermagic 检查，`nova-protection-check.json` 记录实际编译及最终机器码检查。KPM 内核原始备份保留在 `Image.unpatched` 与 `Image.lz4.unpatched`，最终刷入版本由 `kpm-manifest.json` 追溯。
+本段路径以完整构建输出目录（`packages/` 的上级目录）为基准。构建与打包结果见 `build-manifest.json`、`packages/{device}/boot-validation.json` 和 `packages/SHA256SUMS`。{validation_notes}
 """
 
 
@@ -225,8 +234,8 @@ def package(args):
             "# Pixel 4 / Pixel 4 XL 刷机产物\n\n"
             "`flame/` 对应 Pixel 4，`coral/` 对应 Pixel 4 XL。每个目录含独立 boot.img、AnyKernel3 ZIP、"
             "打包校验与刷入说明；`rollback/` 保留各自固定官方 boot。请先阅读对应机型的 README.md。\n\n"
-            "本次为构建及静态校验产物，尚未实机验收。最终 Image、未进行 KPM patch 的原生备份、"
-            "编译配置、日志与符号表保留在本目录的上级构建输出中。\n")
+            "本次为构建及静态校验产物，尚未实机验收。最终 Image、编译配置、日志与符号表"
+            "保留在本目录的上级构建输出中；Stage 1 的 KPM patch 原生备份也保留在该目录。\n")
         sums = "".join(f"{file_hash(path)}  {path.relative_to(temporary).as_posix()}\n"
                        for path in sorted(temporary.rglob("*")) if path.is_file())
         (temporary / "SHA256SUMS").write_text(sums)
