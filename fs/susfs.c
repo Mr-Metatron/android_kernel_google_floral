@@ -1716,6 +1716,7 @@ out_srcu_read_unlock:
 int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode, char __user *buffer, int buflen) {
 	struct st_susfs_open_redirect_hlist *entry = NULL;
 	int srcu_idx = srcu_read_lock(&susfs_srcu_open_redirect);
+	int ret = -ENOENT;
 
 	hash_for_each_possible_rcu(OPEN_REDIRECT_HLIST, entry, node, inode->i_ino) {
 		if (entry->reversed_lookup_only &&
@@ -1723,22 +1724,13 @@ int susfs_open_redirect_spoof_vfs_readlink(struct inode *inode, char __user *buf
 		{
 			SUSFS_LOGI("spoof path '%s' to '%s'\n",
 					entry->info.target_pathname, entry->info.redirected_pathname);
-			if (strlen(entry->info.redirected_pathname) >= buflen) {
-				SUSFS_LOGE("buflen not big enough\n");
-				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-				return -ENAMETOOLONG;
-			}
-			if (copy_to_user(buffer, entry->info.redirected_pathname, strlen(entry->info.redirected_pathname))) {
-				SUSFS_LOGE("copy_to_user() failed\n");
-				srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-				return -EFAULT;
-			}
-			srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-			return 0;
+			ret = readlink_copy(buffer, buflen,
+					    entry->info.redirected_pathname);
+			break;
 		}
 	}
 	srcu_read_unlock(&susfs_srcu_open_redirect, srcu_idx);
-	return -ENOENT;
+	return ret;
 }
 
 int susfs_open_redirect_spoof_do_proc_readlink(struct inode *inode, char *tmp_buf, int buflen) {
