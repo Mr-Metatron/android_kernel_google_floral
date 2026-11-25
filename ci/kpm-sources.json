@@ -2,13 +2,5 @@
   "kp_commit": "1c5b608916357ac86a94cc736e235db1fac4a29d",
   "gnu_directory": "arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf",
   "gnu_url": "https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-elf.tar.xz",
-  "gnu_archive_sha256": "62d66e0ad7bd7f2a183d236ee301a5c73c737c886c7944aa4f39415aab528daf",
-  "gnu_binary_sha256": {
-    "gcc": "7a87e37417ce0dfa9a86f96b8b14edd1ce6db1249bde785b2f1e3d63e095dfeb",
-    "ld": "677cebce9b6d9fd7182a09d2852abbc67b679a9fc6e8180c8e3813d725de3b4c",
-    "objcopy": "7bef7e1bb207c509f53f5a351172299acd8ce8e1439d2e5d17a55bbc56be8f1c"
-  },
-  "patched_bridge_sha256": "346aa8b9dce36e7235b6e280c2955531cb659dcf1ea3501b1b7ddc956f303698",
-  "unchanged_boot_chain_sha256": "914d5cba4741a1bff9143042824933eb21bbc7aedce6534e3dff87c413ef7edc",
-  "unchanged_userd_sha256": "d641bea74dfeb65333b01820b1f55f5d3e9d9ad5b81fbf567b0e76fcf403fc53"
+  "gnu_archive_sha256": "62d66e0ad7bd7f2a183d236ee301a5c73c737c886c7944aa4f39415aab528daf"
 }

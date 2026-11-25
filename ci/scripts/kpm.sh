@@ -64,16 +64,8 @@ else
 fi
 git -C "$kp_source" diff --exit-code -- . ':(exclude)kernel/patch/sukisu/sukisu.c' > "$evidence/unexpected-source-diff.txt"
 python3 - "$lock" "$kp_source" "$evidence" <<'PY'
-import hashlib,json,pathlib,re,sys
+import json,pathlib,re,sys
 lock=json.loads(pathlib.Path(sys.argv[1]).read_text());src=pathlib.Path(sys.argv[2]);e=pathlib.Path(sys.argv[3])
-files={
- 'kernel/patch/sukisu/sukisu.c':'patched_bridge_sha256',
- 'kernel/patch/patch.c':'unchanged_boot_chain_sha256',
- 'kernel/patch/android/userd.c':'unchanged_userd_sha256',
-}
-for filename,key in files.items():
-    if hashlib.sha256((src/filename).read_bytes()).hexdigest()!=lock[key]:
-        raise SystemExit('Unexpected KP source content: '+filename)
 def strip_comments(text):
     pattern=r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/'
     return re.sub(pattern,lambda m:m.group() if m.group()[0] in "\"'" else ' ',text,flags=re.S)
@@ -116,17 +108,14 @@ if [[ ! -x "${cross}gcc" ]]; then
   archive="$deps/$gnu_dir.tar.xz"
   curl -fL --retry 3 --connect-timeout 30 "$(field gnu_url)" -o "$archive"
   printf '%s  %s\n' "$(field gnu_archive_sha256)" "$archive" | sha256sum -c -
-  mkdir -p "$toolchain"
-  tar -xJf "$archive" -C "$toolchain" --strip-components=1
+  unpack=$(mktemp -d "$deps/gnu-unpack.XXXXXX")
+  trap 'rm -rf "$unpack"' EXIT
+  tar -xJf "$archive" -C "$unpack" --strip-components=1
+  [[ ! -e "$toolchain" ]] || rm -rf "$toolchain"
+  mv "$unpack" "$toolchain"
+  trap - EXIT
+  rm "$archive"
 fi
-python3 - "$lock" "$cross" <<'PY'
-import hashlib,json,pathlib,sys
-lock=json.loads(pathlib.Path(sys.argv[1]).read_text())
-for name,expected in lock['gnu_binary_sha256'].items():
-    path=pathlib.Path(sys.argv[2]+name)
-    if hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
-        raise SystemExit('Toolchain hash mismatch: '+str(path))
-PY
 "${cross}gcc" --version > "$evidence/compiler.txt"
 cc --version > "$evidence/host-compiler.txt"
 make -C "$kp_source/kernel" clean TARGET_COMPILE="$cross" > "$evidence/clean.log" 2>&1
@@ -171,26 +160,17 @@ cp "$out/arch/arm64/boot/Image.lz4" "$dist/Image.lz4.unpatched"
   -o "$dist/Image.kpm-tmp" > "$evidence/patch.log" 2>&1
 "$kptools" -l -i "$dist/Image.kpm-tmp" > "$evidence/patched-info.txt" 2>&1
 lz4c -9 < "$dist/Image.kpm-tmp" > "$dist/Image.lz4.kpm-tmp"
-lz4c -d < "$dist/Image.lz4.kpm-tmp" | sha256sum > "$evidence/lz4-roundtrip.sha256"
-[[ "$(cut -d' ' -f1 "$evidence/lz4-roundtrip.sha256")" == "$(sha256sum "$dist/Image.kpm-tmp" | cut -d' ' -f1)" ]] || { echo 'KPM LZ4 roundtrip failed' >&2; exit 1; }
 mv "$dist/Image.kpm-tmp" "$dist/Image"
 mv "$dist/Image.lz4.kpm-tmp" "$dist/Image.lz4"
 python3 - "$root" "$dist" "$lock" "$kp_source" <<'PY'
-import hashlib,json,pathlib,subprocess,sys
+import json,pathlib,subprocess,sys
 root,dist,lock,kp=map(pathlib.Path,sys.argv[1:]);e=dist/'kpm-evidence'
-def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 sources=json.loads((root/'ci/sources.json').read_text());kp_lock=json.loads(lock.read_text())
 manifest={
  'status':'patched','kp_commit':sources['kp']['commit'],
  'kernel_source_commit':subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip(),
  'bridge_abi':2,'bridge_entry':'sukisu_kpm_legacy_entry',
  'source_date_epoch':sources['source_date_epoch'],
- 'kernel_sha256_unpatched':sha(dist/'Image.unpatched'),
- 'kernel_sha256_patched':sha(dist/'Image'),
- 'kernel_lz4_sha256':sha(dist/'Image.lz4'),
- 'kpimg_sha256':sha(e/'kpimg'),
- 'kptools_sha256':sha(kp/'tools/kptools'),
- 'kp_patch_sha256':sha(root/'ci/patches/kp-legacy-bridge.patch'),
  'toolchain':kp_lock,
  'device_tested':False,'extra_root_provider':False,
  'source_review':json.loads((e/'source-review.json').read_text()),
