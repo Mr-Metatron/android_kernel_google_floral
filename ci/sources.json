@@ -15,7 +15,12 @@
     "tree_sha": "95fa94380c2c7cc6632328f2bd9c39a8fdad9d31",
     "reference_archive_sha256": "eecbed4fe6092d54c4933c54d661bd2986861b14a3c3b5dc843caba64eff5f0f",
     "clang_sha256": "b50deb7c48633d03c02b15b6508d79768027e80422265d7a4a7f2f13d2f01d97",
-    "lld_sha256": "36eb18dc6acdd4eca1f63e9ac73708cfef84cdd1c1db47b3ca686a5d1fcdcd81"
+    "lld_sha256": "36eb18dc6acdd4eca1f63e9ac73708cfef84cdd1c1db47b3ca686a5d1fcdcd81",
+    "archive_url": "https://github.com/Mr-Metatron/android_kernel_google_floral/releases/download/toolchain-clang-r596125-291828893998/clang-r596125-291828893998.tar.gz",
+    "archive_sha256": "5367ff5415d6028ebe9b8157e6eab49010e7e980e8a2091e6f0b722b6abf2ce4",
+    "archive_size_bytes": 1090658146,
+    "cache_release": "https://github.com/Mr-Metatron/android_kernel_google_floral/releases/tag/toolchain-clang-r596125-291828893998",
+    "cache_manifest_sha256": "7c72b0cdee4f6df1d12bf8ff42eb0edc5bdfb2ca38e962a083bddabe46fe92a8"
   },
   "gcc64": {
     "repository": "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9",

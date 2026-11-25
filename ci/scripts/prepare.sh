@@ -20,10 +20,9 @@ fetch_repo() {
 }
 clang_dir=$(read_field clang directory)
 if [[ ! -x "$deps/$clang_dir/bin/clang" ]]; then
-  repo=$(read_field clang repository)
-  sha=$(read_field clang commit)
   archive="$deps/$clang_dir.tar.gz"
-  curl -fL --retry 3 --connect-timeout 30 "$repo/+archive/$sha/$clang_dir.tar.gz" -o "$archive"
+  curl -fL --retry 3 --connect-timeout 30 "$(read_field clang archive_url)" -o "$archive"
+  printf '%s  %s\n' "$(read_field clang archive_sha256)" "$archive" | sha256sum --check -
   mkdir -p "$deps/$clang_dir"
   tar -xzf "$archive" -C "$deps/$clang_dir"
   sha256sum "$archive" > "$deps/clang-archive.sha256"

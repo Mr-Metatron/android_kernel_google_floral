@@ -2,6 +2,7 @@
 # Inject the matched KPM loader after the full LOS kernel has passed its checks.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+source "$root/ci/scripts/build-jobs.sh"
 deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 out=${FLORAL_OUT:-"$root/.ci-out/stage1"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/stage1"}
@@ -129,9 +130,9 @@ PY
 "${cross}gcc" --version > "$evidence/compiler.txt"
 cc --version > "$evidence/host-compiler.txt"
 make -C "$kp_source/kernel" clean TARGET_COMPILE="$cross" > "$evidence/clean.log" 2>&1
-CFLAGS='-Wframe-larger-than=3072' make -C "$kp_source/kernel" -j"${FLORAL_JOBS:-2}" \
+CFLAGS='-Wframe-larger-than=3072' make -C "$kp_source/kernel" -j"$FLORAL_JOBS" \
   TARGET_COMPILE="$cross" > "$evidence/build.log" 2>&1
-make -C "$kp_source/tools" -j"${FLORAL_JOBS:-2}" > "$evidence/kptools-build.log" 2>&1
+make -C "$kp_source/tools" -j"$FLORAL_JOBS" > "$evidence/kptools-build.log" 2>&1
 "${cross}nm" -u "$kp_source/kernel/kpimg.elf" > "$evidence/undefined-symbols.txt"
 [[ ! -s "$evidence/undefined-symbols.txt" ]] || { echo 'KP has unresolved symbols' >&2; exit 1; }
 "${cross}readelf" -h "$kp_source/kernel/kpimg.elf" > "$evidence/elf-header.txt"

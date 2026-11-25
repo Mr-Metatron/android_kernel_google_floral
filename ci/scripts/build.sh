@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+source "$root/ci/scripts/build-jobs.sh"
 stage=${1:-stage1}
 case "$stage" in baseline|stage1) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
 deps=${FLORAL_DEPS:-"$root/.ci-deps"}
@@ -41,10 +42,10 @@ make "${make_args[@]}" olddefconfig 2>&1 | tee -a "$dist/config.log"
 python3 "$root/ci/scripts/check-build.py" config "$out" "$dist" "$stage"
 # Check real kernel object commands and LLVM triples before paying for the
 # full build. These objects are reused by the normal build below.
-make "${make_args[@]}" -j"${FLORAL_JOBS:-2}" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
+make "${make_args[@]}" -j"$FLORAL_JOBS" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
 python3 "$root/ci/scripts/check-build.py" target "$out" "$dist" "$stage"
 set +e
-make "${make_args[@]}" -j"${FLORAL_JOBS:-2}" Image Image.lz4 dtbs modules 2>&1 | tee "$dist/build.log"
+make "${make_args[@]}" -j"$FLORAL_JOBS" Image Image.lz4 dtbs modules 2>&1 | tee "$dist/build.log"
 status=${PIPESTATUS[0]}
 set -e
 cp "$out/.config" "$dist/kernel.config"

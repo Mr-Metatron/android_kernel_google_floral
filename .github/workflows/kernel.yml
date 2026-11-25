@@ -18,6 +18,16 @@ on:
         type: string
         required: false
         default: feature/stage1-nova-full
+      runner_label:
+        description: Runner label (default GitHub-hosted; optional dedicated high-memory runner)
+        type: string
+        required: false
+        default: ubuntu-24.04
+      make_jobs:
+        description: Parallel make jobs (auto uses nproc; a positive integer overrides it)
+        type: string
+        required: false
+        default: auto
 
 permissions:
   contents: read
@@ -29,10 +39,10 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runner_label || 'ubuntu-24.04' }}
     timeout-minutes: 180
     env:
-      FLORAL_JOBS: '4'
+      FLORAL_JOBS: ${{ inputs.make_jobs || 'auto' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -44,6 +54,14 @@ jobs:
         env:
           REQUESTED_STAGE: ${{ inputs.stage }}
         run: |
+          floral_cpus=$(nproc)
+          if [[ "$FLORAL_JOBS" == auto ]]; then FLORAL_JOBS=$floral_cpus; fi
+          if [[ ! "$FLORAL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+            echo 'make_jobs must be auto or a positive integer' >&2
+            exit 2
+          fi
+          echo "FLORAL_JOBS=$FLORAL_JOBS" >> "$GITHUB_ENV"
+          echo "Selected make jobs: $FLORAL_JOBS; available CPUs: $floral_cpus"
           stage=${REQUESTED_STAGE:-stage1}
           if [[ ! -f drivers/kernelsu/ksu.c ]]; then stage=baseline; fi
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
@@ -53,10 +71,14 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y bc bison flex libssl-dev libelf-dev lz4 zip cpio
-          sudo fallocate -l 48G /swapfile-floral
-          sudo chmod 600 /swapfile-floral
-          sudo mkswap /swapfile-floral
-          sudo swapon /swapfile-floral
+          memory_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          if (( memory_kib < 50331648 )); then
+            sudo fallocate -l 48G /swapfile-floral
+            sudo chmod 600 /swapfile-floral
+            sudo mkswap /swapfile-floral
+            sudo swapon /swapfile-floral
+          fi
+          free -h
       - name: Prepare frozen dependencies
         run: bash ci/scripts/prepare.sh
       - name: Compile and check

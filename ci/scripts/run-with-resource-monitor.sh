@@ -2,6 +2,7 @@
 # Keep resource evidence and a heartbeat while a foreground build runs.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+source "$root/ci/scripts/build-jobs.sh"
 stage=${1:?Usage: run-with-resource-monitor.sh STAGE COMMAND [ARG ...]}
 shift
 [[ $# -gt 0 ]] || { echo 'A build command is required' >&2; exit 2; }
