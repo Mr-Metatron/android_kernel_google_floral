@@ -155,29 +155,22 @@ static int mnt_alloc_group_id(struct mount *mnt)
 	int res;
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
-	if (susfs_is_current_ksu_domain()) {
+	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted) &&
+	    susfs_is_current_ksu_domain()) {
 		if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
 			return -ENOMEM;
 		res = ida_get_new_above(&mnt_group_ida,
 					DEFAULT_KSU_MNT_GROUP_ID,
 					&mnt->mnt_group_id);
-		goto bypass_orig_flow;
+		return res;
 	}
-
-	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
-		return -ENOMEM;
-	res = ida_get_new_above(&mnt_group_ida,
-				mnt_group_start,
-				&mnt->mnt_group_id);
-bypass_orig_flow:
-#else
-	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
-		return -ENOMEM;
-
-	res = ida_get_new_above(&mnt_group_ida,
-				mnt_group_start,
-				&mnt->mnt_group_id);
 #endif
+	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
+		return -ENOMEM;
+
+	res = ida_get_new_above(&mnt_group_ida,
+				mnt_group_start,
+				&mnt->mnt_group_id);
 	if (!res)
 		mnt_group_start = mnt->mnt_group_id + 1;
 
@@ -248,6 +241,8 @@ static struct mount *susfs_alloc_unshare_ksu_vfsmnt(const char *name, int old_mn
 
 	if (mnt) {
 		mnt->mnt_id = old_mnt_id;
+		/* This mount borrows its ID, including on clone_mnt() failure. */
+		mnt->mnt.mnt_flags |= VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
 
 		if (name) {
 			mnt->mnt_devname = kstrdup_const(name,
@@ -1279,10 +1274,9 @@ static struct mount *clone_mnt(struct mount *old, struct dentry *root,
 	// - If /sdcard/Android is still not accessible, we keep checking for mounts
 	//   mounted by ksu process
 		if (susfs_is_current_ksu_domain()) {
-			// - If it is unsharing, we re-use the old->mnt_id assign it for mnt->mnt_id directly
-			//   without going thru ida, but we need to set a bit VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT
-			//   on mnt->mnt.mnt_flags below, otherwise we find no other ways to identify if this
-			//   mnt->mnt_id is assigned without ida when it is being freed in mnt_free_id().
+			/* The allocator marks the borrowed ID; restore that flag
+			 * below after copying the old mount's flags.
+			 */
 			if (flag & CL_COPY_MNT_NS) {
 				mnt = susfs_alloc_unshare_ksu_vfsmnt(old->mnt_devname, old->mnt_id);
 				is_mnt_ksu_unshared = true;
@@ -1328,9 +1322,8 @@ bypass_orig_flow:
 
 	mnt->mnt.mnt_flags = old->mnt.mnt_flags;
 	mnt->mnt.mnt_flags &= ~(MNT_WRITE_HOLD|MNT_MARKED|MNT_INTERNAL);
-
-
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+	mnt->mnt.mnt_flags &= ~VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
 	if (unlikely(is_mnt_ksu_unshared))
 		mnt->mnt.mnt_flags |= VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT;
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
