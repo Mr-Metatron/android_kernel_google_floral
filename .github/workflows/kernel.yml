@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
+          ref: ${{ inputs.source_ref || (github.event_name == 'workflow_dispatch' && 'feature/stage1-nova-full') || github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Select build and fetch baseline
@@ -60,7 +60,12 @@ jobs:
       - name: Prepare frozen dependencies
         run: bash ci/scripts/prepare.sh
       - name: Compile and check
-        run: bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
+        run: |
+          if [[ -f ci/scripts/run-with-resource-monitor.sh ]]; then
+            bash ci/scripts/run-with-resource-monitor.sh '${{ steps.select.outputs.stage }}' bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
+          else
+            bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
+          fi
       - name: Package flashable images
         if: steps.select.outputs.stage == 'stage1'
         run: |

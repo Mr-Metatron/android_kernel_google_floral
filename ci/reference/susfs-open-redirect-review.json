@@ -62,7 +62,7 @@
       "origin": "Existing scripts/Makefile.build LLVM_NM | grep -q __ksymtab pipeline; reproduced independently on the valid object. Full llvm-nm and llvm-dis complete successfully.",
       "changed": false
     },
-    "full_link": "pending CI for the repaired source",
+    "full_link": "Per-build status is recorded in checks-linked.json; this reference records the local object review.",
     "device_tested": false
   }
 }
