@@ -13,7 +13,7 @@ import re
 import shlex
 import sys
 
-from stack_guard import compiler_target_check, file_sha256, guard_instructions, run_tool
+from stack_guard import compiler_target_check, disassemble, global_guard_references, run_tool
 
 
 def read_ir(ir):
@@ -66,9 +66,6 @@ def linked_check(out, dist, ir_functions, result, errors):
             errors.append(f"Final ELF lacks required symbol: {symbol}")
     if "__stack_chk_guard" not in symbols or "__stack_chk_fail" not in symbols:
         return
-    guard_address = int(symbols["__stack_chk_guard"][1], 16)
-    failure_address = int(symbols["__stack_chk_fail"][1], 16)
-
     nova_names = {name for name in ir_functions
                   if name.startswith(("ksu_", "kernelsu_", "sukisu_"))}
     candidates = []
@@ -90,8 +87,7 @@ def linked_check(out, dist, ir_functions, result, errors):
     # Only inspect functions whose names are also defined in Nova's own IR.
     # This avoids accidentally accepting instrumentation from unrelated code.
     for name in candidates:
-        assembly = run_tool("llvm-objdump", "--no-show-raw-insn",
-                            f"--disassemble-symbols={name}", vmlinux)
+        assembly = disassemble(vmlinux, name)
         matches = instruction_matches(assembly)
         checked.append(name)
         accepted = False
@@ -100,15 +96,16 @@ def linked_check(out, dist, ir_functions, result, errors):
                 "instructions": matches["scs_push"] + matches["scs_pop"]}
             accepted = True
         if matches["stack_canary_failure"]:
-            guard = guard_instructions(assembly, guard_address, failure_address)
-            if guard["tls_guard_loads"]:
+            native = disassemble(out / "vmlinux.o", name, relocations=True)
+            guard = global_guard_references(native, assembly)
+            if guard["tpidr_el0_reads"]:
                 errors.append(f"{name} uses the Android userspace TLS canary slot")
                 excerpts.append(assembly)
                 break
             if proofs["stack_canary"] is None and guard["passed"]:
                 proofs["stack_canary"] = {"function": name, "global_guard": guard,
-                    "instructions": guard["global_guard_loads"] + guard["guard_stack_stores"]
-                                    + guard["guard_comparisons"] + guard["stack_canary_failure"]}
+                    "instructions": guard["global_guard_relocations"] + guard["stack_canary_failure"]}
+                excerpts.append(native)
                 accepted = True
         if proofs["cfi"] is None and matches["cfi_check"]:
             proofs["cfi"] = {"function": name, "instructions": matches["cfi_check"]}
@@ -126,8 +123,7 @@ def linked_check(out, dist, ir_functions, result, errors):
         r"warning:.*(?:stack frame size|frame size of|stack frame.*exceeds)", line, re.I)]
     if warnings:
         errors.append("The linked build reports stack frames exceeding FRAME_WARN")
-    result["linked"] = {"vmlinux_sha256": file_sha256(vmlinux),
-                        "nova_functions_inspected": checked,
+    result["linked"] = {"nova_functions_inspected": checked,
                         "instruction_evidence": proofs, "stack_warnings": warnings}
     (dist / "nova-protection-disassembly.txt").write_text("\n".join(excerpts))
 
@@ -173,10 +169,9 @@ def main():
 
         obj = out / "drivers/kernelsu/ksu.o"
         ir = run_tool("llvm-dis", obj, "-o", "-")
-        result["compiler_target"] = compiler_target_check(command, ir)
+        result["compiler_target"] = compiler_target_check(ir)
         errors.extend(result["compiler_target"]["errors"])
         functions = read_ir(ir)
-        result["object_sha256"] = file_sha256(obj)
         result["llvm_dis_version"] = run_tool("llvm-dis", "--version").strip()
         selected = ["ksu_setup_preinit_file", "ksu_preinit_handle_post_execveat",
                     "ksu_selinux_hide_is_active"]

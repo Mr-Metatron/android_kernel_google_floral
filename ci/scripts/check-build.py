@@ -45,7 +45,7 @@ if mode == 'linked':
         if not re.search(r'\b' + re.escape(symbol) + r'$', symbols, re.M):
             errors.append(f'missing linked symbol {symbol}')
     try:
-        guard = check_linked_guard(out / 'vmlinux', ('do_sys_open', 'do_filp_open'),
+        guard = check_linked_guard(out, ('do_sys_open', 'do_filp_open'),
                                    dist / 'kernel-canary-disassembly.txt')
         result['global_stack_guard'] = guard
         errors.extend(guard['errors'])

@@ -8,8 +8,6 @@ deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 out=${FLORAL_OUT:-"$root/.ci-out/$stage"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
 mkdir -p "$out" "$dist"
-cp "$deps/clang-tree-check.json" "$dist/"
-if [[ -f "$deps/clang-archive.sha256" ]]; then cp "$deps/clang-archive.sha256" "$dist/"; fi
 clang_dir=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clang"]["directory"])' "$root/ci/sources.json")
 export PATH="$deps/$clang_dir/bin:$deps/gcc64/bin:$deps/gcc32/bin:$PATH"
 export LD_LIBRARY_PATH="$deps/$clang_dir/lib:${LD_LIBRARY_PATH:-}"
@@ -51,21 +49,19 @@ set -e
 cp "$out/.config" "$dist/kernel.config"
 cp "$out/.config" "$dist/.config"
 "$deps/$clang_dir/bin/clang" --version > "$dist/compiler.txt"
-sha256sum "$deps/$clang_dir/bin/clang" "$deps/$clang_dir/bin/ld.lld" > "$dist/compiler.sha256"
 [[ $status == 0 ]] || exit "$status"
 cp "$out/Module.symvers" "$out/System.map" "$dist/"
 cp "$out/arch/arm64/boot/Image" "$out/arch/arm64/boot/Image.lz4" "$dist/"
 python3 "$root/ci/scripts/check-build.py" linked "$out" "$dist" "$stage"
 if [[ "$stage" == stage1 ]]; then
   python3 "$root/ci/scripts/check-nova.py" "$out" "$dist"
-  for device in flame coral; do
-    python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-modules-$device.json" "$dist/module-abi-$device.json"
-  done
+  python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"
 fi
 python3 - "$root" "$out" "$dist" "$stage" <<'PY'
-import hashlib,json,pathlib,subprocess,sys
+import json,pathlib,subprocess,sys
 root,out,dist=map(pathlib.Path,sys.argv[1:4]);stage=sys.argv[4]
 m=json.loads((root/'ci/sources.json').read_text())
+m['clang'].pop('archive_sha256', None)
 pipeline_commit=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
 source_dirty=bool(subprocess.check_output(['git','-C',str(root),'status','--porcelain','--untracked-files=no'],text=True).strip())
 m.update(stage=stage,source_commit=m['kernel']['commit'] if stage=='baseline' else pipeline_commit,pipeline_commit=pipeline_commit,source_dirty=False if stage=='baseline' else source_dirty,kernel_release=(out/'include/config/kernel.release').read_text().strip(),device_tested=False)

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Read ELF module version records and check the frozen stock vendor ABI."""
 import argparse
-import hashlib
 import json
 import pathlib
 import struct
@@ -18,11 +17,19 @@ def sections(data):
     return {strings[h[0]:].split(b'\0', 1)[0].decode(): data[h[4]:h[4]+h[5]] for h in headers}
 
 
-def module_record(path):
-    data = path.read_bytes()
-    sec = sections(data)
+def vermagic(sec):
     values = sec['.modinfo'].split(b'\0')
-    vermagic = next(x.split(b'=', 1)[1].decode() for x in values if x.startswith(b'vermagic='))
+    return next(x.split(b'=', 1)[1].decode().strip()
+                for x in values if x.startswith(b'vermagic='))
+
+
+def add_crc(symbols, symbol, crc):
+    if symbol in symbols and symbols[symbol] != crc:
+        raise ValueError(f'Conflicting CRC for {symbol}: {symbols[symbol]} / {crc}')
+    symbols[symbol] = crc
+
+
+def required_symbols(sec):
     raw = sec['__versions']
     if len(raw) % 64:
         raise ValueError('Unexpected module version record size')
@@ -30,9 +37,8 @@ def module_record(path):
     for pos in range(0, len(raw), 64):
         crc = struct.unpack_from('<Q', raw, pos)[0]
         symbol = raw[pos+8:pos+64].split(b'\0', 1)[0].decode()
-        versions[symbol] = f'0x{crc:08x}'
-    return {'file': path.name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
-            'vermagic': vermagic, 'required_symbols': dict(sorted(versions.items()))}
+        add_crc(versions, symbol, f'0x{crc:08x}')
+    return versions
 
 
 parser = argparse.ArgumentParser()
@@ -40,43 +46,49 @@ sub = parser.add_subparsers(dest='command', required=True)
 p = sub.add_parser('extract')
 p.add_argument('directory', type=pathlib.Path)
 p.add_argument('output', type=pathlib.Path)
-p.add_argument('--device', required=True)
-p.add_argument('--rom', required=True)
-p.add_argument('--ota-sha256', required=True)
 p = sub.add_parser('check')
 p.add_argument('out', type=pathlib.Path)
 p.add_argument('reference', type=pathlib.Path)
 p.add_argument('output', type=pathlib.Path)
 args = parser.parse_args()
 if args.command == 'extract':
-    modules = [module_record(p) for p in sorted(args.directory.glob('*.ko'))]
+    modules = sorted(args.directory.rglob('*.ko'))
     if not modules:
         raise SystemExit('No stock vendor modules found')
-    result = {'device': args.device, 'rom': args.rom, 'ota_sha256': args.ota_sha256,
-              'source': 'Official OTA vendor/lib/modules; payload operation SHA256 verified',
-              'modules': modules}
+    symbols, magics = {}, set()
+    for path in modules:
+        sec = sections(path.read_bytes())
+        magics.add(vermagic(sec))
+        for symbol, crc in required_symbols(sec).items():
+            add_crc(symbols, symbol, crc)
+    if len(magics) != 1:
+        raise SystemExit('Stock modules have different vermagic strings')
+    result = {'vermagic': magics.pop(), 'symbols': dict(sorted(symbols.items()))}
 else:
     reference = json.loads(args.reference.read_text())
     current = {}
     for line in (args.out / 'Module.symvers').read_text().splitlines():
         fields = line.split()
         if len(fields) >= 3:
-            current[fields[1]] = fields[0].lower()
-    release = (args.out / 'include/config/kernel.release').read_text().strip()
-    expected_vermagic = release + ' SMP preempt mod_unload modversions aarch64'
+            add_crc(current, fields[1], f'0x{int(fields[0], 16):08x}')
+    modules = sorted(args.out.rglob('*.ko'))
+    if not modules:
+        raise SystemExit('No built modules found for full vermagic verification')
     errors = []
-    checked = 0
-    for module in reference['modules']:
-        if module['vermagic'].strip() != expected_vermagic:
-            errors.append({'module': module['file'], 'field': 'vermagic', 'stock': module['vermagic'], 'built': expected_vermagic})
-        for symbol, crc in module['required_symbols'].items():
-            checked += 1
-            if current.get(symbol) != crc:
-                errors.append({'module': module['file'], 'symbol': symbol, 'stock_crc': crc, 'built_crc': current.get(symbol)})
-    result = {'device': reference['device'], 'rom': reference['rom'], 'kernel_release': release,
-              'modules_checked': len(reference['modules']), 'import_records_checked': checked,
+    built_magics = set()
+    for path in modules:
+        actual = vermagic(sections(path.read_bytes()))
+        built_magics.add(actual)
+        if actual != reference['vermagic']:
+            errors.append({'module': str(path.relative_to(args.out)), 'field': 'vermagic',
+                           'stock': reference['vermagic'], 'built': actual})
+    for symbol, crc in reference['symbols'].items():
+        if current.get(symbol) != crc:
+            errors.append({'symbol': symbol, 'stock_crc': crc, 'built_crc': current.get(symbol)})
+    result = {'vermagic': reference['vermagic'], 'built_vermagic': sorted(built_magics),
+              'built_modules_checked': len(modules), 'symbols_checked': len(reference['symbols']),
               'errors': errors, 'passed': not errors,
-              'scope': 'Exact release and exported symbol CRC comparison; device loading remains untested'}
+              'scope': 'Full built-module vermagic and vendor import CRC comparison; device loading remains untested'}
 args.output.parent.mkdir(parents=True, exist_ok=True)
 args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
 if args.command == 'check' and errors:
