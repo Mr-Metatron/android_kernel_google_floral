@@ -98,7 +98,8 @@ int ksu_setup_preinit_file(struct filename **filename_ptr, struct user_arg_ptr *
 	char fd_path[32] = { 0 };
 	struct file *file;
 	struct path path;
-	int fd, len;
+	struct filename *runner_name;
+	int fd;
 
 	if (likely(!READ_ONCE(ksu_preinit_file)))
 		return -EINVAL;
@@ -120,7 +121,7 @@ int ksu_setup_preinit_file(struct filename **filename_ptr, struct user_arg_ptr *
 	// runner has been loaded.
 	fd_install(fd, file);
 
-	len = snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
+	snprintf(fd_path, sizeof(fd_path), "/proc/self/fd/%d", fd);
 	if (kern_path(fd_path, LOOKUP_FOLLOW, &path)) {
 		pr_err("preinit: %s not reachable, booting without preinit\n", fd_path);
 		ksu_close_fd(fd);
@@ -128,8 +129,14 @@ int ksu_setup_preinit_file(struct filename **filename_ptr, struct user_arg_ptr *
 	}
 	path_put(&path);
 
-	memset((void *)(*filename_ptr)->name, 0, strlen((*filename_ptr)->name));
-	memcpy((void *)(*filename_ptr)->name, (void *)fd_path, strlen(fd_path));
+	/* do_execveat_common owns this filename; transfer that reference. */
+	runner_name = getname_kernel(fd_path);
+	if (IS_ERR(runner_name)) {
+		ksu_close_fd(fd);
+		return PTR_ERR(runner_name);
+	}
+	putname(*filename_ptr);
+	*filename_ptr = runner_name;
 
 	pr_info("preinit: exec runner via %s\n", fd_path);
 	return fd;
@@ -138,13 +145,23 @@ int ksu_setup_preinit_file(struct filename **filename_ptr, struct user_arg_ptr *
 int ksu_preinit_handle_post_execveat(int *fd, struct filename **filename_ptr, void *argv_user,
 				     void *envp_user, int *flags, int *retval, int *preinit_fd)
 {
-	if (*retval && *preinit_fd > 0) {
-		ksu_close_fd(*preinit_fd);
-		memset((void *)(*filename_ptr)->name, 0, strlen((*filename_ptr)->name));
-		memcpy((void *)(*filename_ptr)->name, INIT_PATH, strlen(INIT_PATH));
-		return -EINVAL;
+	struct filename *init_name;
+
+	if (*retval >= 0 || *preinit_fd < 0)
+		return 0;
+
+	ksu_close_fd(*preinit_fd);
+	*preinit_fd = -1;
+	init_name = getname_kernel(INIT_PATH);
+	if (IS_ERR(init_name)) {
+		*retval = PTR_ERR(init_name);
+		return *retval;
 	}
-	return 0;
+
+	/* The caller retained a reference across __do_execve_file(). */
+	putname(*filename_ptr);
+	*filename_ptr = init_name;
+	return -EAGAIN; /* Retry the original init once, with a fresh filename. */
 }
 
 bool ksu_preinit_handle_execve(const char __user **filename_user, const char __user *const __user *argv_user,

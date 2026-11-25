@@ -271,6 +271,21 @@ static int ksu_prepare_fake_status_page()
 bool ksu_selinux_hide_running __read_mostly = false;
 struct page *fake_status __read_mostly = NULL;
 
+/* Typed source-level entry points for the 4.14 selinuxfs inline hooks.
+ * Keep the same process scope as Nova's existing file-operation wrappers.
+ */
+bool ksu_selinux_hide_is_active(void)
+{
+	return READ_ONCE(ksu_selinux_hide_running) &&
+	       ksu_is_seccomp_enabled() && current_uid().val >= 10000;
+}
+
+bool ksu_selinux_hide_should_filter_context(char *context, size_t size)
+{
+	return ksu_selinux_hide_is_active() &&
+	       ksu_should_destroy_context(context, size);
+}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 3, 0)
 DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
 #define ksu_fake_status_init_pending()	static_key_enabled(&fake_status_initialize_key.key)
