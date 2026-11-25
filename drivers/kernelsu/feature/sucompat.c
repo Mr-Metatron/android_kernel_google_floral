@@ -184,6 +184,9 @@ int ksu_handle_faccessat(int *dfd, struct filename **filename_ptr, int *mode, in
 {
 	struct filename *filename = *filename_ptr;
 
+	if (likely(!__ksu_is_allow_uid_for_current(current_uid().val)))
+		return 0;
+
 	if (unlikely(IS_ERR(filename) || filename->name == NULL))
 		return 0;
 
@@ -198,6 +201,9 @@ int ksu_handle_faccessat(int *dfd, struct filename **filename_ptr, int *mode, in
 int ksu_handle_stat(int *dfd, struct filename **filename_ptr, int *flags)
 {
 	struct filename *filename = *filename_ptr;
+
+	if (likely(!__ksu_is_allow_uid_for_current(current_uid().val)))
+		return 0;
 
 	if (unlikely(IS_ERR(filename) || filename->name == NULL))
 		return 0;
