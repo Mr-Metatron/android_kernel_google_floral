@@ -34,6 +34,6 @@ Clang 从固定 [GitHub Release 缓存](https://github.com/Mr-Metatron/android_k
 
 ## 设备验收与回退
 
-设备验收覆盖启动与 FBE、Manager 识别、授权与撤权、模块安装和卸载、安全模式、preinit、KPM 生命周期、SUSFS 规则、SELinux Enforcing，以及 Wi-Fi、蜂窝、人脸、Soli 与休眠。切出 Stage 2 前完成 Stage 1 系统性回归；自动构建不会自行声明实机验收通过。
+设备验收覆盖启动与 FBE、Manager 识别、授权与撤权、模块安装和卸载、安全模式、preinit、KPM 生命周期、SUSFS 规则、SELinux Enforcing，以及 Wi-Fi、蜂窝、人脸、Soli 与休眠。Stage 1 编译、静态检查及 Artifact 交付完成后可进入 Stage 2；实机系统性回归由用户另行安排，accepted 标签仅记录实际验收结果。
 
 刷入使用对应机型的 AnyKernel3 ZIP，或与当前 ROM 匹配的可选 Fastboot 包。刷入前保存当前槽位 boot 与对应 ROM 的原厂 boot；恢复时写回同槽位的备份，并按原有恢复路径禁用 KPM 自加载和普通模块。
