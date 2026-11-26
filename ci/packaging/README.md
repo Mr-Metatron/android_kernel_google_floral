@@ -1,10 +1,14 @@
 # Pixel 4 内核打包
 
-第一阶段依次运行 `ci/scripts/build.sh stage1`、`ci/scripts/kpm.sh stage1`、`ci/scripts/package.sh stage1`；第二阶段将三个参数均改为 `stage2`。脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；`FLORAL_ANYKERNEL` 可指定已准备好的 AnyKernel3 checkout。打包要求配置、链接、Nova linked 和模块 ABI 检查完成，并确认 `kpm-manifest.json` 中补丁已完成、桥接 ABI 和源码提交一致。
+第一阶段依次运行 `ci/scripts/build.sh stage1`、`ci/scripts/kpm.sh stage1`、`ci/scripts/package.sh stage1`；第二阶段将三个参数均改为 `stage2`。脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；`FLORAL_ANYKERNEL` 可指定已准备好的 AnyKernel3 checkout。打包要求配置、链接、Nova linked 检查完成，并确认 `kpm-manifest.json` 中补丁已完成、桥接 ABI 和源码提交一致。
 
-Stage 2 遇到原厂模块的已存在导出符号 CRC 变化时，保留失败的 `module-abi.json`，并要求独立 `module-bundle.json` 核验同次构建的完整 27 个 ARM64 模块、vermagic 与全部导入 CRC。通过后生成 `AnyKernel3-<device>-stage2-requires-matching-modules.zip` 和 `VendorModules-floral-stage2.zip`；刷入前需同步准备这些配套模块。AnyKernel3 仅更新 boot，模块包提供 `.ko` 文件与说明，部署方式按当前 ROM 的模块加载路径落实。
+Stage 1 继续要求原厂模块的完整 vermagic／导入 CRC 检查通过。Stage 2 起将原有 27 个树内 vendor 驱动静态内建进内核，打包要求容器与内建驱动链接检查通过，并核对报告属于同一源码。保留 `MODULES=y` 与 `MODVERSIONS=y`，后续可选 LKM 需要按当前内核配置构建。
 
-默认打包使用已准备的依赖，产物写入 `$FLORAL_DIST/packages/`。阶段一生成 `AnyKernel3-flame-stage1.zip`、`AnyKernel3-coral-stage1.zip`；阶段二按上文生成对应内核和配套模块包。每个最终 ZIP 计算一次 SHA256，统一写入包外的 `SHA256SUMS`；包内没有逐文件哈希表。最终 `Image.lz4`、配置、符号表和检查报告保留在 `$FLORAL_DIST`，随 GitHub Actions Artifacts 上传，运行期报告不提交到源码仓库。`baseline` 打包无需 Nova / KPM / vendor ABI 报告。
+默认打包使用已准备的依赖，产物写入 `$FLORAL_DIST/packages/`，分别生成 `AnyKernel3-flame-<stage>.zip`、`AnyKernel3-coral-<stage>.zip`。Stage 2 只需刷入对应机型的 AnyKernel3 ZIP，无需替换 vendor 模块；恢复同一槽位原 boot 即可回退。每个最终 ZIP 计算一次 SHA256，统一写入包外的 `SHA256SUMS`；包内没有逐文件哈希表。
+
+两款机型 ZIP、独立 `Image.lz4`、`SHA256SUMS` 与构建检查资料分别上传为独立 GitHub Actions Artifacts。配置、符号表、日志及报告放在检查资料中；中间内核镜像、重复配置、裸模块目录与手工证据目录不上传。运行期报告不提交源码仓库。`baseline` 打包无需 Nova／KPM／vendor ABI 报告。
+
+Stage 2／Stage 3 在 KPM 注入后检查最终 `Image.lz4` 不超过 48 MiB，为 64 MiB boot 分区中的原 ramdisk、DTB、头部与验证元数据预留至少 16 MiB，并将实际字节数与剩余预算写入 `image-size.json`。这是构建体积预算；安装时固定版 AnyKernel3 使用当前 boot 重包，并在写入前检查新镜像未超过目标分区。
 
 ## AnyKernel3 与内核格式
 
@@ -25,8 +29,8 @@ FLORAL_BOOT_DEVICE=flame ci/scripts/package.sh stage1
 
 输入 boot 必须匹配当前 ROM 和机型。magiskboot 保留原 AVB 描述符摘要，`PATCHVBMETAFLAG=false` 保持原 flags；替换内核后的镜像沿用可刷自定义内核的解锁与验证配置。此流程没有重新计算 AVB 描述符摘要或重新签名。
 
-额外生成的 `Fastboot-<device>-stage1.zip` 含 `boot.img`、下载的原 `stock-boot.img` 和使用说明。只提供一个机型的 URL 就只生成该机型的 Fastboot 包。刷入前核对机型和活动槽位，保留当前 boot 备份；可先 `fastboot boot boot.img` 试启动，再显式指定已核对的槽位持久刷入。回退时向同一槽位刷回对应原 boot。
+额外生成的 `Fastboot-<device>-<stage>.zip` 含 `boot.img`、下载的原 `stock-boot.img` 和使用说明。只提供一个机型的 URL 就只生成该机型的 Fastboot 包。刷入前核对机型和活动槽位，保留当前 boot 备份；可先 `fastboot boot boot.img` 试启动，再显式指定已核对的槽位持久刷入。回退时向同一槽位刷回对应原 boot。
 
 ## 验收边界
 
-检查报告说明构建、链接与 ABI 的检查结果。本次修正后的产物仍需完成实机启动、Root、SUSFS、KPM 生命周期和日用功能验收。
+检查报告记录构建、链接、Stage 1 原厂模块 ABI 或 Stage 2 起的内建驱动检查结果。实机验收覆盖启动、Root、SUSFS、KPM 生命周期、Wi-Fi、音频／通话、ADSP、incrementalfs 与其他日用功能。

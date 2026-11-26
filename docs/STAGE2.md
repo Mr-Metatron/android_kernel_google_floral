@@ -32,18 +32,22 @@
 
 Full Clang LTO、非 permissive CFI、SCS、强栈保护、栈初始化、`REFCOUNT_FULL`、`AUDIT`、`FRAME_WARN=3072` 和 Stage 1 的 Nova／KPM 检查继续执行。容器检查核对解析后的配置、实际 ELF 中的 controller／namespace／syscall／IPv6 NAT 接口与对应构建对象。
 
-vendor ABI 检查使用固定的完整 vermagic 与符号 CRC 基线。MEMCG 和 fair 组调度改变公共结构布局，需要为第二阶段配套当前源码构建的完整 27 个 vendor 模块；文件名清单与原厂 CRC 保存在同一份 [vendor-abi.json](../ci/reference/vendor-abi.json)。
+Stage 2 起将原本以 LKM 构建的 27 个树内 vendor 驱动静态链接进内核，覆盖 WLAN、MSM 11ad、音频／ADSP、incrementalfs 与 softdog。MEMCG 和 fair 分组调度改变公共结构布局，原厂 `.ko` 与新内核的符号 CRC 不兼容；驱动内建后，更新内核无需替换 `/vendor/lib/modules`。保留 `CONFIG_MODULES=y`、`CONFIG_MODVERSIONS=y`，供按当前内核配置构建的可选 LKM 使用。
 
-原厂 ABI 对照继续保留真实差异。只有错误全部属于已存在导出符号的 CRC 变化时，才进入独立的配套模块检查：核对完整文件集合、ARM64 ELF、完整 vermagic、`module_layout` 和所有导入符号 CRC，包括模块间导出。缺失导出、配置、链接、Nova 或配套模块检查失败都会停止打包。
+四项驱动配置在 `stage2.config` 中设为 `y`；`techpack/audio/config/sm8150auto.conf` 中原有全部 42 项 `=m` 改为 `=y`。WLAN 移除等待用户写 `boot_wlan` 的间接层，由内建初始化入口直接调用 `hdd_driver_load()` 注册 CNSS 驱动，保留原有内建命名与 `-EPROBE_DEFER` 路径。适配参考 Sultan 的[音频内建提交](https://github.com/kerneltoast/android_kernel_google_floral/commit/cd2d304737)和[WLAN 初始化提交](https://github.com/kerneltoast/android_kernel_google_floral/commit/2d87f77f62)。
 
-需要匹配模块的 AnyKernel3 ZIP 文件名带有 `requires-matching-modules`，并同时交付 `VendorModules-floral-stage2.zip`。模块归档包含 27 个 `.ko` 与使用说明；刷入前需为当前 ROM 准备同步替换。AnyKernel3 继续只更新 boot 内核，模块部署不自动写入 vendor。回退时内核和模块一起恢复。
+固定设备树在 `on init` 启动 `insmod_sh`，早于 KernelSU `post-fs-data`。[原脚本](https://github.com/LineageOS/android_device_google_coral/blob/54913ec2b6e46e9d8d09ae21a15a3d1f7ca634dc/init/init.insmod.sh)未启用 `set -e`，模块装载失败后仍继续执行 ADSP／CDSP／SLPI 启动节点和 ready 属性；该 ROM 脚本保持原样。内建驱动的初始化与依赖探测由内核承担，实机需核对 Wi-Fi、音频和 ADSP 启动结果及日志。
 
-每次运行的配置、编译器版本、源码提交、日志、符号表、容器能力报告与 ABI 结果保存在 GitHub Actions Artifacts。flame／coral 使用共用内核，各自生成机型限定的 AnyKernel3 ZIP；`Image.lz4` 单独归档。当前 ROM 的 boot 输入由用户按需提供，默认构建不生成独立 `boot.img`。
+Stage 1 保留固定完整 vermagic 与导入 CRC 的原厂模块 ABI 检查。Stage 2 及后续 Stage 3 改为核验静态驱动配置、实际 ELF 入口和构建对象，并要求清理历史残留后的输出目录中没有 `.ko`。Full LTO、CFI、SCS 与栈帧检查失败时停止打包。
+
+flame／coral 使用共用内核，各自生成机型限定的 `AnyKernel3-<device>-stage2.zip`。只需刷入对应机型的 ZIP，安装器保留当前 ramdisk，不修改 vendor、dtbo 或 vbmeta；回退时恢复同一槽位原 boot。最终 KPM 镜像的体积检查与安装器分区检查见 [打包说明](../ci/packaging/README.md)。
+
+两款机型 ZIP、独立 `Image.lz4`、包外 `SHA256SUMS`、构建检查资料分别上传为独立 GitHub Actions Artifacts，保存 30 天。检查资料包含实际 `.config`、编译器版本、源码提交、日志、符号表与能力报告；不携带重复配置、裸模块、手工目录或中间内核镜像。当前 ROM 的 boot 输入由用户按需提供，默认构建不生成独立 `boot.img`。
 
 ## 外部环境与实机验收
 
 容器 runtime、rootfs、安装与启停工具沿用现成方案。Android 的 CPU v1／memory v2 布局需要外部环境提供标准 runtime 可用的控制器挂载；内核继续保留 cpuset 的 noprefix 接口。第二阶段不附 cgroup 描述文件、网络脚本或用户态策略。
 
-MEMCG 与 fair 分组调度在未启动容器时也存在。实机检查覆盖未启动容器、运行中、停止后三种状态的前台交互、App／GMS、休眠、人脸、PSI／LMKD 与资源回收。CPU、内存、swap、pids、devices 限制需核对真实控制文件和负载效果；网络需核对双栈出网、端口发布、热点与 VPN。依赖 bridge netfilter hook 的网络模式保留待验证状态。
+MEMCG 与 fair 分组调度在未启动容器时也存在。实机检查覆盖未启动容器、运行中、停止后三种状态的前台交互、App／GMS、休眠、人脸、PSI／LMKD 与资源回收。驱动内建后复测 Wi-Fi 启停与休眠恢复、音频播放与录音、通话、ADSP 启动及 incrementalfs 安装路径。CPU、内存、swap、pids、devices 限制需核对真实控制文件和负载效果；网络需核对双栈出网、端口发布、热点与 VPN。依赖 bridge netfilter hook 的网络模式保留待验证状态。
 
-回退使用阶段一匹配的 boot／Image 和模块，保留外部容器数据。先通过现有工具停止容器，再按原恢复路径回退内核；完整实机验收通过后再创建 accepted 标签。
+先通过现有工具停止容器，再恢复同一槽位的阶段一 boot／Image；vendor 与外部容器数据保持原样。完整实机验收通过后再创建 accepted 标签。
