@@ -1326,5 +1326,34 @@
     "wireless_send_event": "0xd1fb824a",
     "wsa881x_codec_info_create_codec_entry": "0xae51f3be",
     "wsa881x_set_channel_map": "0xf6b44954"
-  }
+  },
+  "modules": [
+    "adsp_loader_dlkm.ko",
+    "apr_dlkm.ko",
+    "cs35l36_dlkm.ko",
+    "incrementalfs.ko",
+    "machine_dlkm.ko",
+    "mbhc_dlkm.ko",
+    "msm_11ad_proxy.ko",
+    "native_dlkm.ko",
+    "pinctrl_wcd_dlkm.ko",
+    "platform_dlkm.ko",
+    "q6_dlkm.ko",
+    "q6_notifier_dlkm.ko",
+    "q6_pdr_dlkm.ko",
+    "softdog.ko",
+    "stub_dlkm.ko",
+    "swr_ctrl_dlkm.ko",
+    "swr_dlkm.ko",
+    "usf_dlkm.ko",
+    "wcd934x_dlkm.ko",
+    "wcd9360_dlkm.ko",
+    "wcd9xxx_dlkm.ko",
+    "wcd_core_dlkm.ko",
+    "wcd_cpe_dlkm.ko",
+    "wcd_spi_dlkm.ko",
+    "wglink_dlkm.ko",
+    "wlan.ko",
+    "wsa881x_dlkm.ko"
+  ]
 }
