@@ -59,6 +59,8 @@ jobs:
         with:
           ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 1
+          # Keep this temporary runner's frozen dependencies and incremental objects.
+          clean: ${{ runner.environment != 'self-hosted' }}
           persist-credentials: false
       - name: Select build and fetch baseline
         id: select
