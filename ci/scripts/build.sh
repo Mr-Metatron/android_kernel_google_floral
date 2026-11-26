@@ -59,13 +59,6 @@ cp "$out/.config" "$dist/.config"
 cp "$out/Module.symvers" "$out/System.map" "$dist/"
 cp "$out/arch/arm64/boot/Image" "$out/arch/arm64/boot/Image.lz4" "$dist/"
 python3 "$root/ci/scripts/check-build.py" linked "$out" "$dist" "$stage"
-if [[ "$stage" != baseline ]]; then
-  python3 "$root/ci/scripts/check-nova.py" "$out" "$dist"
-  python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"
-fi
-if [[ "$stage" == stage2 ]]; then
-  python3 "$root/ci/scripts/check-containers.py" linked "$out" "$dist" "$stage"
-fi
 python3 - "$root" "$out" "$dist" "$stage" <<'PY'
 import json,pathlib,subprocess,sys
 root,out,dist=map(pathlib.Path,sys.argv[1:4]);stage=sys.argv[4]
@@ -76,3 +69,19 @@ source_dirty=bool(subprocess.check_output(['git','-C',str(root),'status','--porc
 m.update(stage=stage,source_commit=m['kernel']['commit'] if stage=='baseline' else pipeline_commit,pipeline_commit=pipeline_commit,source_dirty=False if stage=='baseline' else source_dirty,kernel_release=(out/'include/config/kernel.release').read_text().strip(),device_tested=False)
 (dist/'build-manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n')
 PY
+if [[ "$stage" != baseline ]]; then
+  python3 "$root/ci/scripts/check-nova.py" "$out" "$dist"
+  if python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"; then
+    :
+  else
+    abi_status=$?
+    [[ "$stage" == stage2 ]] || exit "$abi_status"
+    # Preserve the failed stock comparison. Only a fully checked set of
+    # matching vendor modules can satisfy the Stage 2 delivery dependency.
+    python3 "$root/ci/scripts/module_abi.py" bundle "$out" "$root/ci/reference/vendor-abi.json" "$dist" \
+      --source-commit "$(git -C "$root" rev-parse HEAD)"
+  fi
+fi
+if [[ "$stage" == stage2 ]]; then
+  python3 "$root/ci/scripts/check-containers.py" linked "$out" "$dist" "$stage"
+fi

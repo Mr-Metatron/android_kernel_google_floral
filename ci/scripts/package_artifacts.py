@@ -23,6 +23,7 @@ def require(condition, message):
 
 def verify_inputs(dist, stage, sources):
     manifest = load_json(dist / "build-manifest.json")
+    module_bundle = None
     require(manifest.get("stage") == stage, "build stage mismatch")
     for source in ("kernel", "nova", "susfs", "kp", "anykernel"):
         require(manifest.get(source, {}).get("commit") == sources[source]["commit"], f"build source mismatch: {source}")
@@ -35,7 +36,31 @@ def verify_inputs(dist, stage, sources):
         nova = load_json(dist / "nova-protection-check.json")
         require(nova.get("passed") is True and nova.get("mode") == "linked", "Nova linked checks have not passed")
         abi = load_json(dist / "module-abi.json")
-        require(abi.get("passed") is True and not abi.get("errors"), "vendor module ABI checks have not passed")
+        stock_compatible = abi.get("passed") is True and not abi.get("errors")
+        if not stock_compatible:
+            require(stage == "stage2", "vendor module ABI checks have not passed")
+            require(abi.get("passed") is False and abi.get("errors"),
+                    "missing failed stock vendor ABI comparison")
+            module_bundle = load_json(dist / "module-bundle.json")
+            require(module_bundle.get("passed") is True and not module_bundle.get("errors") and
+                    module_bundle.get("complete_coverage") is True and
+                    module_bundle.get("requires_vendor_module_replacement") is True,
+                    "complete matching vendor modules have not passed their checks")
+            require(module_bundle.get("source_commit") == manifest["source_commit"] and
+                    module_bundle.get("kernel_release") == manifest["kernel_release"] and
+                    module_bundle.get("vermagic") == abi.get("vermagic"),
+                    "matching vendor modules belong to a different kernel build")
+            required = module_bundle.get("required_modules", [])
+            modules = module_bundle.get("modules", [])
+            require(module_bundle.get("modules_checked") == len(modules) == len(required) == 27 and
+                    len(set(required)) == 27 and
+                    sorted(item.get("relative_path", "") for item in modules) == sorted(required),
+                    "matching vendor module coverage is incomplete")
+            for relative in required:
+                path = dist / "vendor-modules" / relative
+                require(Path(relative).name == relative and relative.endswith(".ko") and
+                        path.is_file() and not path.is_symlink(),
+                        f"missing matching vendor module: {relative}")
         kpm = load_json(dist / "kpm-manifest.json")
         require(kpm.get("status") == "patched" and kpm.get("bridge_abi") == 2,
                 "KPM image patch has not completed")
@@ -51,7 +76,7 @@ def verify_inputs(dist, stage, sources):
                 "Stage 2 container capability source mismatch")
     kernel = (dist / "Image.lz4").read_bytes()
     require(kernel[:4] in (b"\x02\x21\x4c\x18", b"\x04\x22\x4d\x18"), "Image.lz4 is not an LZ4 frame")
-    return manifest, kernel
+    return manifest, kernel, module_bundle
 
 
 def ak3_files(path, commit):
@@ -81,8 +106,13 @@ def write_zip(path, files, epoch):
             archive.writestr(info, data)
 
 
-def readme(device, stage, manifest, fastboot=False):
+def readme(device, stage, manifest, fastboot=False, module_bundle=None):
     header = f"# {device} / {stage}\n\n内核源码提交：`{manifest['source_commit']}`。\n\n"
+    if module_bundle:
+        header += ("**本内核要求同步配套替换 27 个 vendor 模块。** 请搭配同次构建的 "
+                   "`VendorModules-floral-stage2.zip` 使用。原厂模块的符号 CRC 与本内核存在差异，"
+                   "刷入前需为当前 ROM 准备这套模块的同步替换；当前 AnyKernel3 仅替换 boot 中的内核。"
+                   "请保留原内核和原 vendor 模块，以便一起回退。\n\n")
     if fastboot:
         body = ("`boot.img` 使用本次提供的当前 ROM boot 重打包；`stock-boot.img` 是原输入的副本。"
                 "magiskboot 保留原 ramdisk、独立 DTB 和其他 boot 组件，只替换内核。\n\n"
@@ -99,6 +129,9 @@ def readme(device, stage, manifest, fastboot=False):
     checks = "配置、链接、Nova、KPM 与模块 ABI" if stage in ("stage1", "stage2") else "配置与链接"
     if stage == "stage2":
         checks += "、容器内核能力"
+        if module_bundle:
+            body += ("原厂 vendor ABI 对照报告保留为失败；独立的配套模块报告核验了完整模块覆盖、"
+                     "ARM64 ELF、完整 vermagic 及全部导入符号 CRC。设备加载与日用功能仍需验收。\n\n")
         body += ("本阶段累计包含 Nova、KPM、SUSFS 与容器内核配置，IPv6 NAT 静态内建，"
                  "BRIDGE_NETFILTER 保持关闭。Docker／LXC 的运行环境、cgroup 挂载与网络配置"
                  "由现有外部方案提供；容器功能和资源限制等待实机验收。\n\n")
@@ -109,7 +142,8 @@ def readme(device, stage, manifest, fastboot=False):
 def package(args):
     root, dist, anykernel = (Path(value).resolve() for value in (args.root, args.dist, args.anykernel))
     sources = load_json(root / "ci/sources.json")
-    manifest, kernel = verify_inputs(dist, args.stage, sources)
+    manifest, kernel, module_bundle = verify_inputs(dist, args.stage, sources)
+    suffix = "-requires-matching-modules" if module_bundle else ""
     upstream = ak3_files(anykernel, sources["anykernel"]["commit"])
     require(not args.boot_url or args.boot_device in ("flame", "coral"), "select flame or coral for the optional boot image")
     template = (root / "ci/packaging/anykernel.sh.in").read_text()
@@ -120,15 +154,29 @@ def package(args):
                 "@SOURCE_SHORT@", manifest["source_commit"][:12])
             files = dict(upstream)
             files.update({"anykernel.sh": (installer.encode(), 0o755), "Image.lz4": (kernel, 0o644),
-                          "README.md": (readme(device, args.stage, manifest), 0o644)})
-            write_zip(temporary / f"AnyKernel3-{device}-{args.stage}.zip", files, sources["source_date_epoch"])
+                          "README.md": (readme(device, args.stage, manifest, module_bundle=module_bundle), 0o644)})
+            write_zip(temporary / f"AnyKernel3-{device}-{args.stage}{suffix}.zip", files, sources["source_date_epoch"])
+        if module_bundle:
+            files = {"vendor-modules/" + item["relative_path"]:
+                     ((dist / "vendor-modules" / item["relative_path"]).read_bytes(), 0o644)
+                     for item in module_bundle["modules"]}
+            module_readme = ("# Stage 2 配套 vendor 模块\n\n"
+                             f"内核源码提交：`{manifest['source_commit']}`。\n\n"
+                             "本包提供本次内核构建的完整 27 个 ARM64 原生模块。请将全部模块与同次 Stage 2 "
+                             "内核同步配套使用；模块清单及逐模块导入 CRC 检查结果见 Actions Artifact 中的 "
+                             "`module-bundle.json`。\n\n"
+                             "`vendor-modules/` 中的文件对应原厂 vendor 模块文件名。此压缩包只提供模块文件，"
+                             "需要按当前 ROM 的模块加载路径完成部署；AnyKernel3 安装器只更新 boot。"
+                             "原厂模块与本内核的 ABI 不兼容，请保留原 boot 和原模块并在回退时一起恢复。\n")
+            files["README.md"] = (module_readme.encode(), 0o644)
+            write_zip(temporary / f"VendorModules-floral-{args.stage}.zip", files, sources["source_date_epoch"])
         if args.boot_url:
             boot_dir = temporary / "boot"
             subprocess.run(["bash", str(root / "ci/scripts/repack-boot.sh"), str(anykernel / "tools/magiskboot"),
                             str(dist / "Image.lz4"), args.boot_url, str(boot_dir)], check=True)
             files = {name: ((boot_dir / name).read_bytes(), 0o644) for name in ("boot.img", "stock-boot.img")}
-            files["README.md"] = (readme(args.boot_device, args.stage, manifest, fastboot=True), 0o644)
-            write_zip(temporary / f"Fastboot-{args.boot_device}-{args.stage}.zip", files, sources["source_date_epoch"])
+            files["README.md"] = (readme(args.boot_device, args.stage, manifest, fastboot=True, module_bundle=module_bundle), 0o644)
+            write_zip(temporary / f"Fastboot-{args.boot_device}-{args.stage}{suffix}.zip", files, sources["source_date_epoch"])
             shutil.rmtree(boot_dir)
         # Only final delivery archives are hashed, once each and outside the ZIPs.
         sums = "".join(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
