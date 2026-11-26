@@ -8,8 +8,8 @@ shift
 [[ $# -gt 0 ]] || { echo 'A build command is required' >&2; exit 2; }
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
 mkdir -p "$dist"
-resource_log="$dist/resource-monitor.log"
-: > "$resource_log"
+resource_log=$(mktemp "${TMPDIR:-/tmp}/floral-resource-${stage}.XXXXXX")
+lscpu > "$resource_log"
 
 resource_snapshot() {
   printf '\nRESOURCE_SNAPSHOT %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -63,6 +63,8 @@ cleanup() {
   trap - EXIT
   kill "$monitor_pid" 2>/dev/null || true
   wait "$monitor_pid" 2>/dev/null || true
+  mkdir -p "$dist"
+  mv -- "$resource_log" "$dist/resource-monitor.log"
   exit "$status"
 }
 trap cleanup EXIT

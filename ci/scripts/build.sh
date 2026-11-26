@@ -3,10 +3,13 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 source "$root/ci/scripts/build-jobs.sh"
 stage=${1:-stage1}
-case "$stage" in baseline|stage1|stage2) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
+case "$stage" in baseline|stage1|stage2|stage3) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
+container_stage=false
+case "$stage" in stage2|stage3) container_stage=true ;; esac
 deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 out=${FLORAL_OUT:-"$root/.ci-out/$stage"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
+rm -rf -- "$dist"
 mkdir -p "$out" "$dist"
 clang_dir=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clang"]["directory"])' "$root/ci/sources.json")
 export PATH="$deps/$clang_dir/bin:$deps/gcc64/bin:$deps/gcc32/bin:$PATH"
@@ -35,12 +38,13 @@ make_args=(-C "$source_dir" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=
 make "${make_args[@]}" floral_defconfig 2>&1 | tee "$dist/config.log"
 if [[ "$stage" != baseline ]]; then
   fragments=("$root/ci/configs/stage1.config")
-  if [[ "$stage" == stage2 ]]; then fragments+=("$root/ci/configs/stage2.config"); fi
+  if "$container_stage"; then fragments+=("$root/ci/configs/stage2.config"); fi
+  if [[ "$stage" == stage3 ]]; then fragments+=("$root/ci/configs/stage3.config"); fi
   "$source_dir/scripts/kconfig/merge_config.sh" -m -O "$out" "$out/.config" "${fragments[@]}" 2>&1 | tee -a "$dist/config.log"
 fi
 make "${make_args[@]}" olddefconfig 2>&1 | tee -a "$dist/config.log"
 python3 "$root/ci/scripts/check-build.py" config "$out" "$dist" "$stage"
-if [[ "$stage" == stage2 ]]; then
+if "$container_stage"; then
   cp "$root/ci/configs/stage2.config" "$dist/stage2.config"
   python3 "$root/ci/scripts/check-containers.py" config "$out" "$dist" "$stage"
 fi
@@ -48,11 +52,12 @@ fi
 # full build. These objects are reused by the normal build below.
 make "${make_args[@]}" -j"$FLORAL_JOBS" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
 python3 "$root/ci/scripts/check-build.py" target "$out" "$dist" "$stage"
+# Discard old loadable outputs when drivers switch from modules to built-ins.
+find "$out" -name '*.ko' -delete
 set +e
 make "${make_args[@]}" -j"$FLORAL_JOBS" Image Image.lz4 dtbs modules 2>&1 | tee "$dist/build.log"
 status=${PIPESTATUS[0]}
 set -e
-cp "$out/.config" "$dist/kernel.config"
 cp "$out/.config" "$dist/.config"
 "$deps/$clang_dir/bin/clang" --version > "$dist/compiler.txt"
 [[ $status == 0 ]] || exit "$status"
@@ -71,17 +76,10 @@ m.update(stage=stage,source_commit=m['kernel']['commit'] if stage=='baseline' el
 PY
 if [[ "$stage" != baseline ]]; then
   python3 "$root/ci/scripts/check-nova.py" "$out" "$dist"
-  if python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"; then
-    :
-  else
-    abi_status=$?
-    [[ "$stage" == stage2 ]] || exit "$abi_status"
-    # Preserve the failed stock comparison. Only a fully checked set of
-    # matching vendor modules can satisfy the Stage 2 delivery dependency.
-    python3 "$root/ci/scripts/module_abi.py" bundle "$out" "$root/ci/reference/vendor-abi.json" "$dist" \
-      --source-commit "$(git -C "$root" rev-parse HEAD)"
+  if [[ "$stage" == stage1 ]]; then
+    python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"
   fi
 fi
-if [[ "$stage" == stage2 ]]; then
+if "$container_stage"; then
   python3 "$root/ci/scripts/check-containers.py" linked "$out" "$dist" "$stage"
 fi

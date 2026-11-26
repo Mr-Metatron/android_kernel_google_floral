@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the selected Stage 2 kernel interfaces without claiming device tests."""
+"""Check container interfaces and built-in vendor drivers without claiming device tests."""
 import json
 import pathlib
 import re
@@ -8,8 +8,8 @@ import sys
 
 
 mode, out_arg, dist_arg, stage = sys.argv[1:]
-if mode not in ('config', 'linked') or stage != 'stage2':
-    raise SystemExit('Expected: check-containers.py {config|linked} OUT DIST stage2')
+if mode not in ('config', 'linked') or stage not in ('stage2', 'stage3'):
+    raise SystemExit('Expected: check-containers.py {config|linked} OUT DIST {stage2|stage3}')
 root = pathlib.Path(__file__).resolve().parents[2]
 out, dist = pathlib.Path(out_arg), pathlib.Path(dist_arg)
 dist.mkdir(parents=True, exist_ok=True)
@@ -47,12 +47,17 @@ groups = {
                 'IPV6', 'IP6_NF_IPTABLES', 'IP6_NF_FILTER', 'NF_NAT_IPV6',
                 'IP6_NF_NAT', 'NF_NAT_MASQUERADE_IPV6',
                 'IP6_NF_TARGET_MASQUERADE'],
+    'builtin_drivers': ['QCA_CLD_WLAN', 'MSM_11AD', 'INCREMENTAL_FS', 'SOFT_WATCHDOG'],
     'host_interfaces': ['SECCOMP', 'SECCOMP_FILTER', 'SECURITY_SELINUX',
                         'AUDIT', 'BPF_SYSCALL', 'PSI', 'SCHED_TUNE',
                         'MODULES', 'MODULE_UNLOAD', 'MODVERSIONS',
                         'STATIC_USERMODEHELPER'],
 }
 errors = []
+# This make fragment supplies audio settings outside the generated .config.
+audio = read_config(root / 'techpack/audio/config/sm8150auto.conf')
+if not audio or any(value != 'y' for value in audio.values()):
+    errors.append('All sm8150 audio make settings must be built in (=y)')
 for name, expected in fragment.items():
     if cfg.get(name, 'n') != expected:
         errors.append(f'Fragment CONFIG_{name}: expected {expected}, got {cfg.get(name, "n")}')
@@ -75,6 +80,7 @@ result = {
     'configuration': {group: {name: cfg.get(name, 'n') for name in names}
                       for group, names in groups.items()},
     'fragment': fragment,
+    'audio_configuration': audio,
     'errors': errors,
     'device_tested': False,
     'external_conditions': [
@@ -108,6 +114,22 @@ if mode == 'linked':
         if not matches:
             errors.append(f'Missing linked container interface: {symbol}')
     result['linked_interfaces'] = linked
+    # Initcall references survive LTO even when their function bodies are folded.
+    driver_entries = ['hdd_module_init', 'adsp_loader_init', 'init_incfs_module',
+                      'softdog_init', 'msm_11ad_driver_init']
+    result['builtin_driver_entries'] = {}
+    for symbol in driver_entries:
+        initcall = r'__initcall_(?:.*_)?' + re.escape(symbol) + r'\d+s?(?:\..*)?'
+        matches = sorted(name for name in names
+                         if name == symbol or name.startswith(symbol + '.')
+                         or re.fullmatch(initcall, name))
+        result['builtin_driver_entries'][symbol] = matches
+        if not matches:
+            errors.append(f'Missing linked built-in driver entry: {symbol}')
+    modules = sorted(str(path.relative_to(out)) for path in out.rglob('*.ko'))
+    result['loadable_modules'] = modules
+    if modules:
+        errors.append('Unexpected loadable driver outputs: ' + ', '.join(modules))
     # These objects prove the selected table/match/target providers were
     # built; their static entry points can be folded into LTO initcall data.
     objects = [
@@ -117,6 +139,9 @@ if mode == 'linked':
         'net/ipv6/netfilter/ip6table_nat.o',
         'net/ipv6/netfilter/ip6t_MASQUERADE.o',
         'mm/memcontrol.o', 'kernel/cgroup/pids.o', 'security/device_cgroup.o',
+        'drivers/staging/qcacld-3.0/core/hdd/src/wlan_hdd_main.o',
+        'techpack/audio/dsp/adsp-loader.o', 'fs/incfs/main.o',
+        'drivers/watchdog/softdog.o', 'drivers/platform/msm/msm_11ad/msm_11ad.o',
     ]
     result['built_objects'] = {path: (out / path).is_file() for path in objects}
     for path, present in result['built_objects'].items():
@@ -124,7 +149,7 @@ if mode == 'linked':
             errors.append(f'Missing container object: {path}')
 
 result['passed'] = not errors
-(dist / 'stage2-container-capabilities.json').write_text(
+(dist / f'{stage}-container-capabilities.json').write_text(
     json.dumps(result, ensure_ascii=False, indent=2) + '\n')
 if errors:
     raise SystemExit('\n'.join(errors))

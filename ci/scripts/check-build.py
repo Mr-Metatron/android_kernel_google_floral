@@ -16,7 +16,7 @@ cfg = (out / '.config').read_text()
 required = ['LTO_CLANG', 'CFI_CLANG', 'SHADOW_CALL_STACK', 'REFCOUNT_FULL',
             'AUDIT', 'MODULES', 'MODVERSIONS', 'CC_STACKPROTECTOR_STRONG',
             'SECURITY_SELINUX', 'INIT_STACK_ALL_ZERO']
-if stage in ('stage1', 'stage2'):
+if stage != 'baseline':
     required += ['KSU', 'KPM', 'KSU_SUSFS', 'KSU_SUSFS_INLINE_HOOK']
 errors = [f'CONFIG_{x}=y missing' for x in required if f'CONFIG_{x}=y\n' not in cfg]
 for symbol in ['CFI_PERMISSIVE', 'THINLTO', 'KSU_DEBUG']:
@@ -51,7 +51,7 @@ if mode == 'linked':
         errors.extend(guard['errors'])
     except (OSError, ValueError, RuntimeError) as exc:
         errors.append(f'Global stack guard check failed: {exc}')
-    if stage in ('stage1', 'stage2'):
+    if stage != 'baseline':
         command = (out / 'drivers/kernelsu/.ksu.o.cmd').read_text()
         for flag in ['-flto', '-fsanitize=cfi', '-fsanitize=shadow-call-stack',
                      '-fstack-protector-strong', '-Wframe-larger-than=3072',

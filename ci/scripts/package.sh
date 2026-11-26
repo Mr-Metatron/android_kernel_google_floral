@@ -2,7 +2,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 stage=${1:-stage1}
-case "$stage" in baseline|stage1|stage2) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
+case "$stage" in baseline|stage1|stage2|stage3) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
 deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
 anykernel=${FLORAL_ANYKERNEL:-"$deps/anykernel"}
