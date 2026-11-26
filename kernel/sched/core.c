@@ -7249,11 +7249,22 @@ static void cpu_cgroup_css_released(struct cgroup_subsys_state *css)
 static void cpu_cgroup_css_free(struct cgroup_subsys_state *css)
 {
 	struct task_group *tg = css_tg(css);
+#ifdef CONFIG_CFS_BANDWIDTH
+	bool bandwidth_used = tg->cfs_bandwidth.quota != RUNTIME_INF;
+#endif
 
 	/*
 	 * Relies on the RCU grace period between css_released() and this.
 	 */
 	sched_free_group(tg);
+#ifdef CONFIG_CFS_BANDWIDTH
+	/* Both bandwidth timers are stopped before dropping the reference. */
+	if (bandwidth_used) {
+		get_online_cpus();
+		cfs_bandwidth_usage_dec();
+		put_online_cpus();
+	}
+#endif
 }
 
 /*
