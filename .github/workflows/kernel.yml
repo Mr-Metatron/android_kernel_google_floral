@@ -67,6 +67,8 @@ jobs:
         env:
           REQUESTED_STAGE: ${{ inputs.stage }}
         run: |
+          # Evidence and deliverables belong to this run; only dependency/object caches are reused.
+          rm -rf -- .ci-dist
           floral_cpus=$(nproc)
           if [[ "$FLORAL_JOBS" == auto ]]; then FLORAL_JOBS=$floral_cpus; fi
           if [[ ! "$FLORAL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
