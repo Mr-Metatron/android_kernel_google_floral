@@ -11,7 +11,7 @@ on:
       stage:
         description: Build stage
         type: choice
-        options: [auto, baseline, stage1, stage2]
+        options: [auto, baseline, stage1, stage2, stage3]
         default: auto
       source_ref:
         description: Optional source commit or ref (empty uses the selected workflow ref)
@@ -67,8 +67,6 @@ jobs:
         env:
           REQUESTED_STAGE: ${{ inputs.stage }}
         run: |
-          # Evidence and deliverables belong to this run; only dependency/object caches are reused.
-          rm -rf -- .ci-dist
           floral_cpus=$(nproc)
           if [[ "$FLORAL_JOBS" == auto ]]; then FLORAL_JOBS=$floral_cpus; fi
           if [[ ! "$FLORAL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
@@ -79,7 +77,9 @@ jobs:
           echo "Selected make jobs: $FLORAL_JOBS; available CPUs: $floral_cpus"
           stage=${REQUESTED_STAGE:-auto}
           if [[ "$stage" == auto ]]; then
-            if [[ -f ci/configs/stage2.config ]]; then
+            if [[ -f ci/configs/stage3.config ]]; then
+              stage=stage3
+            elif [[ -f ci/configs/stage2.config ]]; then
               stage=stage2
             elif [[ -f drivers/kernelsu/ksu.c ]]; then
               stage=stage1
@@ -87,7 +87,9 @@ jobs:
               stage=baseline
             fi
           fi
-          case "$stage" in baseline|stage1|stage2) ;; *) exit 2 ;; esac
+          case "$stage" in baseline|stage1|stage2|stage3) ;; *) exit 2 ;; esac
+          # Clear old evidence even if dependency preparation fails before build.sh.
+          rm -rf -- ".ci-dist/$stage"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           git fetch --depth 1 origin bb17b7de4b570f2c0c32ddba0543cac03c58dd84
@@ -116,16 +118,71 @@ jobs:
             bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
           fi
       - name: Package AnyKernel3 and optional Fastboot image
-        if: steps.select.outputs.stage == 'stage1' || steps.select.outputs.stage == 'stage2'
+        if: steps.select.outputs.stage != 'baseline'
         run: |
           bash ci/scripts/kpm.sh '${{ steps.select.outputs.stage }}'
           bash ci/scripts/package.sh '${{ steps.select.outputs.stage }}'
-      - name: Upload build evidence and successful artifacts
-        if: always()
+      - name: Upload flame AnyKernel3
+        if: success() && steps.select.outputs.stage != 'baseline'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: floral-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
-          path: .ci-dist/
+          name: AnyKernel3-flame-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: .ci-dist/${{ steps.select.outputs.stage }}/packages/AnyKernel3-flame-${{ steps.select.outputs.stage }}.zip
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload coral AnyKernel3
+        if: success() && steps.select.outputs.stage != 'baseline'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: AnyKernel3-coral-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: .ci-dist/${{ steps.select.outputs.stage }}/packages/AnyKernel3-coral-${{ steps.select.outputs.stage }}.zip
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload standalone kernel image
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Image-lz4-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: .ci-dist/${{ steps.select.outputs.stage }}/Image.lz4
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload package checksums
+        if: success() && steps.select.outputs.stage != 'baseline'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: SHA256SUMS-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: .ci-dist/${{ steps.select.outputs.stage }}/packages/SHA256SUMS
+          retention-days: 30
+          if-no-files-found: error
+      - name: Upload optional Fastboot image
+        if: success() && inputs.boot_image_url != '' && steps.select.outputs.stage != 'baseline'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Fastboot-${{ inputs.boot_device }}-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: .ci-dist/${{ steps.select.outputs.stage }}/packages/Fastboot-${{ inputs.boot_device }}-${{ steps.select.outputs.stage }}.zip
+          retention-days: 30
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload build evidence
+        if: always() && steps.select.outputs.stage != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-evidence-${{ steps.select.outputs.stage }}-${{ steps.select.outputs.source_sha }}
+          path: |
+            .ci-dist/${{ steps.select.outputs.stage }}/.config
+            .ci-dist/${{ steps.select.outputs.stage }}/Module.symvers
+            .ci-dist/${{ steps.select.outputs.stage }}/System.map
+            .ci-dist/${{ steps.select.outputs.stage }}/*.json
+            .ci-dist/${{ steps.select.outputs.stage }}/*.log
+            .ci-dist/${{ steps.select.outputs.stage }}/*.txt
+            .ci-dist/${{ steps.select.outputs.stage }}/stage*.config
+            .ci-dist/${{ steps.select.outputs.stage }}/kpm-evidence/*.json
+            .ci-dist/${{ steps.select.outputs.stage }}/kpm-evidence/*.log
+            .ci-dist/${{ steps.select.outputs.stage }}/kpm-evidence/*.txt
+            .ci-dist/${{ steps.select.outputs.stage }}/kpm-evidence/System.map
           retention-days: 30
           if-no-files-found: warn
           include-hidden-files: true
