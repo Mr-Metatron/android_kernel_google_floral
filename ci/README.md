@@ -14,9 +14,9 @@ Git 提交固定、编译保护检查、vendor 模块的 `vermagic` 与导出符
 
 ## 产物与提交
 
-运行期报告、日志、资源采样和构建清单写入 `.ci-dist/`，仅上传 GitHub Actions Artifacts，不提交到源码树。`reference/vendor-abi.json` 只保存共同的完整 `vermagic` 与去重符号 CRC 基线；静态设计说明分别写在 `docs/STAGE1.md`、`docs/STAGE2.md`。
+运行期报告、日志、资源采样和构建清单写入 `.ci-dist/`，仅上传 GitHub Actions Artifacts，不提交到源码树。`reference/vendor-abi.json` 保存共同的完整 `vermagic`、去重符号 CRC 基线和 27 个原厂模块文件名；静态设计说明分别写在 `docs/STAGE1.md`、`docs/STAGE2.md`。
 
-Stage 2 沿用配置、链接、Nova 编译保护、vendor ABI 与 KPM 打包门禁，并增加配置解析后与链接后的容器能力检查。失败时只保留检查证据，停止生成刷机包；通过后分别生成 flame、coral 的 AnyKernel3 ZIP，并归档 `Image.lz4`、Stage 2 fragment 和能力报告。`BRIDGE_NETFILTER` 默认关闭，本阶段不额外构建可选网桥过滤模块。Artifacts 保存 30 天，实机验收状态独立记录。
+Stage 2 沿用配置、链接、Nova 编译保护、vendor ABI 与 KPM 打包门禁，并增加配置解析后与链接后的容器能力检查。原厂导出符号 CRC 变化时保留原报告，并要求同次构建的完整 27 个模块通过独立兼容检查；其余检查失败或配套模块不完整时停止打包。通过后分别生成 flame、coral 的 AnyKernel3 ZIP，按需附带匹配模块归档，并归档 `Image.lz4`、Stage 2 fragment 和能力报告。需要配套模块的 ZIP 名称带有 `requires-matching-modules`。`BRIDGE_NETFILTER` 默认关闭，本阶段不额外构建可选网桥过滤模块。Artifacts 保存 30 天，实机验收状态独立记录。
 
 内核缺陷修复与 CI 修改分开提交；每个提交围绕可单独审阅和 revert 的改动。Stage 2 容器支持与 Stage 3 优化继续分别维护，按设计方案拆分提交。
 

@@ -18,7 +18,7 @@ Nova 通过 builtin-new 接入，保留输入事件安全模式接线。SUSFS �
 
 64 位 `CROSS_COMPILE` 保持为空，使用树内 GNU AArch64 Clang target。构建前检查真实 bitcode 的 `aarch64-unknown-linux-gnu` triple，链接后检查全局栈 canary 引用及保护代码，避免误用 Android 用户态 TLS canary ABI。
 
-内核 release 保持 `4.14.357-openela-gbb17b7de4b57`。两个机型的原厂 vendor 模块共用 [vendor ABI 基线](../ci/reference/vendor-abi.json)，仅保存完整 `vermagic` 和去重后的符号 CRC。构建检查实际生成的模块 vermagic，并将所有基线符号与 `Module.symvers` 比对。
+内核 release 保持 `4.14.357-openela-gbb17b7de4b57`。两个机型的原厂 vendor 模块共用 [vendor ABI 基线](../ci/reference/vendor-abi.json)，保存完整 `vermagic` 和去重后的符号 CRC。构建检查实际生成的模块 vermagic，并将所有基线符号与 `Module.symvers` 比对。
 
 ## 构建与产物
 

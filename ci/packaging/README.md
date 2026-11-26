@@ -4,7 +4,7 @@
 
 Stage 2 遇到原厂模块的已存在导出符号 CRC 变化时，保留失败的 `module-abi.json`，并要求独立 `module-bundle.json` 核验同次构建的完整 27 个 ARM64 模块、vermagic 与全部导入 CRC。通过后生成 `AnyKernel3-<device>-stage2-requires-matching-modules.zip` 和 `VendorModules-floral-stage2.zip`；刷入前需同步准备这些配套模块。AnyKernel3 仅更新 boot，模块包提供 `.ko` 文件与说明，部署方式按当前 ROM 的模块加载路径落实。
 
-默认打包不访问网络，不下载 stock boot。`$FLORAL_DIST/packages/` 只生成 `AnyKernel3-flame-stage1.zip`、`AnyKernel3-coral-stage1.zip` 和包外的 `SHA256SUMS`。每个最终 ZIP 计算一次 SHA256；包内没有文件校验和或相互套用的 manifest。最终 `Image.lz4`、配置、符号表和检查报告保留在 `$FLORAL_DIST`，随 GitHub Actions Artifacts 上传，运行期报告不提交到源码仓库。`baseline` 打包无需 Nova / KPM / vendor ABI 报告。
+默认打包使用已准备的依赖，产物写入 `$FLORAL_DIST/packages/`。阶段一生成 `AnyKernel3-flame-stage1.zip`、`AnyKernel3-coral-stage1.zip`；阶段二按上文生成对应内核和配套模块包。每个最终 ZIP 计算一次 SHA256，统一写入包外的 `SHA256SUMS`；包内没有逐文件哈希表。最终 `Image.lz4`、配置、符号表和检查报告保留在 `$FLORAL_DIST`，随 GitHub Actions Artifacts 上传，运行期报告不提交到源码仓库。`baseline` 打包无需 Nova / KPM / vendor ABI 报告。
 
 ## AnyKernel3 与内核格式
 
