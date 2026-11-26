@@ -11,13 +11,13 @@ on:
       stage:
         description: Build stage
         type: choice
-        options: [baseline, stage1]
-        default: stage1
+        options: [auto, baseline, stage1, stage2]
+        default: auto
       source_ref:
-        description: Optional source commit or ref
+        description: Optional source commit or ref (empty uses the selected workflow ref)
         type: string
         required: false
-        default: feature/stage1-nova-full
+        default: ''
       runner_label:
         description: Runner label (default GitHub-hosted; optional dedicated high-memory runner)
         type: string
@@ -43,7 +43,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: floral-${{ github.ref }}-${{ github.event_name }}-${{ inputs.stage || 'stage1' }}-${{ inputs.source_ref || github.sha }}
+  group: floral-${{ github.ref }}-${{ github.event_name }}-${{ inputs.stage || 'auto' }}-${{ inputs.source_ref || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ inputs.source_ref || (github.event_name == 'workflow_dispatch' && 'feature/stage1-nova-full') || github.sha }}
+          ref: ${{ inputs.source_ref || github.sha }}
           fetch-depth: 1
           persist-credentials: false
       - name: Select build and fetch baseline
@@ -73,8 +73,17 @@ jobs:
           fi
           echo "FLORAL_JOBS=$FLORAL_JOBS" >> "$GITHUB_ENV"
           echo "Selected make jobs: $FLORAL_JOBS; available CPUs: $floral_cpus"
-          stage=${REQUESTED_STAGE:-stage1}
-          if [[ ! -f drivers/kernelsu/ksu.c ]]; then stage=baseline; fi
+          stage=${REQUESTED_STAGE:-auto}
+          if [[ "$stage" == auto ]]; then
+            if [[ -f ci/configs/stage2.config ]]; then
+              stage=stage2
+            elif [[ -f drivers/kernelsu/ksu.c ]]; then
+              stage=stage1
+            else
+              stage=baseline
+            fi
+          fi
+          case "$stage" in baseline|stage1|stage2) ;; *) exit 2 ;; esac
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           git fetch --depth 1 origin bb17b7de4b570f2c0c32ddba0543cac03c58dd84
@@ -103,10 +112,10 @@ jobs:
             bash ci/scripts/build.sh '${{ steps.select.outputs.stage }}'
           fi
       - name: Package AnyKernel3 and optional Fastboot image
-        if: steps.select.outputs.stage == 'stage1'
+        if: steps.select.outputs.stage == 'stage1' || steps.select.outputs.stage == 'stage2'
         run: |
-          bash ci/scripts/kpm.sh
-          bash ci/scripts/package.sh stage1
+          bash ci/scripts/kpm.sh '${{ steps.select.outputs.stage }}'
+          bash ci/scripts/package.sh '${{ steps.select.outputs.stage }}'
       - name: Upload build evidence and successful artifacts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
