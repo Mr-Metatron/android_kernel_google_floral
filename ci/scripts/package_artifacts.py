@@ -31,7 +31,7 @@ def verify_inputs(dist, stage, sources):
         require(check.get("passed") is True and not check.get("errors") and
                 check.get("stage") == stage and check.get("mode") == mode,
                 f"{mode} build checks have not passed")
-    if stage == "stage1":
+    if stage in ("stage1", "stage2"):
         nova = load_json(dist / "nova-protection-check.json")
         require(nova.get("passed") is True and nova.get("mode") == "linked", "Nova linked checks have not passed")
         abi = load_json(dist / "module-abi.json")
@@ -42,6 +42,13 @@ def verify_inputs(dist, stage, sources):
         require(kpm.get("kp_commit") == sources["kp"]["commit"] and
                 kpm.get("kernel_source_commit") == manifest["source_commit"], "KPM source mismatch")
         require(kpm.get("extra_root_provider") is False, "unexpected additional root provider")
+    if stage == "stage2":
+        containers = load_json(dist / "stage2-container-capabilities.json")
+        require(containers.get("passed") is True and not containers.get("errors") and
+                containers.get("mode") == "linked" and containers.get("stage") == stage,
+                "Stage 2 container capability checks have not passed")
+        require(containers.get("source_commit") == manifest["source_commit"],
+                "Stage 2 container capability source mismatch")
     kernel = (dist / "Image.lz4").read_bytes()
     require(kernel[:4] in (b"\x02\x21\x4c\x18", b"\x04\x22\x4d\x18"), "Image.lz4 is not an LZ4 frame")
     return manifest, kernel
@@ -89,7 +96,12 @@ def readme(device, stage, manifest, fastboot=False):
                 "刷入前备份当前 boot，回退时对同一槽位刷回该备份。\n\n"
                 "ZIP 使用 `Image.lz4`；本机型的 DTB 在 boot v2 中独立存放。安装器不安装原生模块，"
                 "也不写 vendor、dtbo、vbmeta 分区。\n\n")
-    checks = "配置、链接、Nova、KPM 与模块 ABI" if stage == "stage1" else "配置与链接"
+    checks = "配置、链接、Nova、KPM 与模块 ABI" if stage in ("stage1", "stage2") else "配置与链接"
+    if stage == "stage2":
+        checks += "、容器内核能力"
+        body += ("本阶段累计包含 Nova、KPM、SUSFS 与容器内核配置，IPv6 NAT 静态内建，"
+                 "BRIDGE_NETFILTER 保持关闭。Docker／LXC 的运行环境、cgroup 挂载与网络配置"
+                 "由现有外部方案提供；容器功能和资源限制等待实机验收。\n\n")
     return (header + body + f"{checks}检查结果随 Actions Artifacts 提供；"
             "本次构建的设备功能验收需在刷入后完成。\n").encode()
 
@@ -136,7 +148,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for argument in ("root", "dist", "anykernel"):
         parser.add_argument("--" + argument, required=True)
-    parser.add_argument("--stage", choices=("baseline", "stage1"), default="stage1")
+    parser.add_argument("--stage", choices=("baseline", "stage1", "stage2"), default="stage1")
     parser.add_argument("--boot-url", default=os.environ.get("FLORAL_BOOT_IMAGE_URL", ""))
     parser.add_argument("--boot-device", default=os.environ.get("FLORAL_BOOT_DEVICE", ""))
     try:

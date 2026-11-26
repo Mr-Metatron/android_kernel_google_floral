@@ -3,7 +3,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 source "$root/ci/scripts/build-jobs.sh"
 stage=${1:-stage1}
-case "$stage" in baseline|stage1) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
+case "$stage" in baseline|stage1|stage2) ;; *) echo "Unsupported stage: $stage" >&2; exit 2 ;; esac
 deps=${FLORAL_DEPS:-"$root/.ci-deps"}
 out=${FLORAL_OUT:-"$root/.ci-out/$stage"}
 dist=${FLORAL_DIST:-"$root/.ci-dist/$stage"}
@@ -33,11 +33,17 @@ printf '%s\n' '-gbb17b7de4b57' > "$source_dir/.scmversion"
 # stack canary ABI; the kernel initializes the global __stack_chk_guard.
 make_args=(-C "$source_dir" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE= CROSS_COMPILE_ARM32=arm-linux-androideabi- DTC_EXT="$deps/dtc/dtc" DTC_OVERLAY_TEST_EXT="$deps/dtc/ufdt_apply_overlay")
 make "${make_args[@]}" floral_defconfig 2>&1 | tee "$dist/config.log"
-if [[ "$stage" == stage1 ]]; then
-  "$source_dir/scripts/kconfig/merge_config.sh" -m -O "$out" "$out/.config" "$root/ci/configs/stage1.config" 2>&1 | tee -a "$dist/config.log"
+if [[ "$stage" != baseline ]]; then
+  fragments=("$root/ci/configs/stage1.config")
+  if [[ "$stage" == stage2 ]]; then fragments+=("$root/ci/configs/stage2.config"); fi
+  "$source_dir/scripts/kconfig/merge_config.sh" -m -O "$out" "$out/.config" "${fragments[@]}" 2>&1 | tee -a "$dist/config.log"
 fi
 make "${make_args[@]}" olddefconfig 2>&1 | tee -a "$dist/config.log"
 python3 "$root/ci/scripts/check-build.py" config "$out" "$dist" "$stage"
+if [[ "$stage" == stage2 ]]; then
+  cp "$root/ci/configs/stage2.config" "$dist/stage2.config"
+  python3 "$root/ci/scripts/check-containers.py" config "$out" "$dist" "$stage"
+fi
 # Check real kernel object commands and LLVM triples before paying for the
 # full build. These objects are reused by the normal build below.
 make "${make_args[@]}" -j"$FLORAL_JOBS" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
@@ -53,9 +59,12 @@ cp "$out/.config" "$dist/.config"
 cp "$out/Module.symvers" "$out/System.map" "$dist/"
 cp "$out/arch/arm64/boot/Image" "$out/arch/arm64/boot/Image.lz4" "$dist/"
 python3 "$root/ci/scripts/check-build.py" linked "$out" "$dist" "$stage"
-if [[ "$stage" == stage1 ]]; then
+if [[ "$stage" != baseline ]]; then
   python3 "$root/ci/scripts/check-nova.py" "$out" "$dist"
   python3 "$root/ci/scripts/module_abi.py" check "$out" "$root/ci/reference/vendor-abi.json" "$dist/module-abi.json"
+fi
+if [[ "$stage" == stage2 ]]; then
+  python3 "$root/ci/scripts/check-containers.py" linked "$out" "$dist" "$stage"
 fi
 python3 - "$root" "$out" "$dist" "$stage" <<'PY'
 import json,pathlib,subprocess,sys
