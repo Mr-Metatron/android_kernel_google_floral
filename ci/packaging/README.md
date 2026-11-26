@@ -1,6 +1,8 @@
 # Pixel 4 内核打包
 
-依次运行 `ci/scripts/build.sh stage1`、`ci/scripts/kpm.sh`、`ci/scripts/package.sh stage1`。脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；`FLORAL_ANYKERNEL` 可指定已准备好的 AnyKernel3 checkout。打包要求配置、链接、Nova linked、单份 `module-abi.json` 检查通过，并确认 `kpm-manifest.json` 中补丁已完成、桥接 ABI 和源码提交一致。
+第一阶段依次运行 `ci/scripts/build.sh stage1`、`ci/scripts/kpm.sh stage1`、`ci/scripts/package.sh stage1`；第二阶段将三个参数均改为 `stage2`。脚本共用 `FLORAL_DEPS`、`FLORAL_OUT`、`FLORAL_DIST`；`FLORAL_ANYKERNEL` 可指定已准备好的 AnyKernel3 checkout。打包要求配置、链接、Nova linked 和模块 ABI 检查完成，并确认 `kpm-manifest.json` 中补丁已完成、桥接 ABI 和源码提交一致。
+
+Stage 2 遇到原厂模块的已存在导出符号 CRC 变化时，保留失败的 `module-abi.json`，并要求独立 `module-bundle.json` 核验同次构建的完整 27 个 ARM64 模块、vermagic 与全部导入 CRC。通过后生成 `AnyKernel3-<device>-stage2-requires-matching-modules.zip` 和 `VendorModules-floral-stage2.zip`；刷入前需同步准备这些配套模块。AnyKernel3 仅更新 boot，模块包提供 `.ko` 文件与说明，部署方式按当前 ROM 的模块加载路径落实。
 
 默认打包不访问网络，不下载 stock boot。`$FLORAL_DIST/packages/` 只生成 `AnyKernel3-flame-stage1.zip`、`AnyKernel3-coral-stage1.zip` 和包外的 `SHA256SUMS`。每个最终 ZIP 计算一次 SHA256；包内没有文件校验和或相互套用的 manifest。最终 `Image.lz4`、配置、符号表和检查报告保留在 `$FLORAL_DIST`，随 GitHub Actions Artifacts 上传，运行期报告不提交到源码仓库。`baseline` 打包无需 Nova / KPM / vendor ABI 报告。
 

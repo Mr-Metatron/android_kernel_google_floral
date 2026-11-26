@@ -32,7 +32,11 @@
 
 Full Clang LTO、非 permissive CFI、SCS、强栈保护、栈初始化、`REFCOUNT_FULL`、`AUDIT`、`FRAME_WARN=3072` 和 Stage 1 的 Nova／KPM 检查继续执行。容器检查核对解析后的配置、实际 ELF 中的 controller／namespace／syscall／IPv6 NAT 接口与对应构建对象。
 
-vendor ABI 检查使用固定的完整 vermagic 与符号 CRC 基线。MEMCG 和 fair 组调度改变公共结构布局，实际兼容结果以本次 `Module.symvers` 对照为准。检查失败时停止默认刷机包交付，先确定所需的匹配模块；不修改符号 CRC 或强制加载。
+vendor ABI 检查使用固定的完整 vermagic 与符号 CRC 基线。MEMCG 和 fair 组调度改变公共结构布局，需要为第二阶段配套当前源码构建的完整 27 个 vendor 模块；文件名清单与原厂 CRC 保存在同一份 [vendor-abi.json](../ci/reference/vendor-abi.json)。
+
+原厂 ABI 对照继续保留真实差异。只有错误全部属于已存在导出符号的 CRC 变化时，才进入独立的配套模块检查：核对完整文件集合、ARM64 ELF、完整 vermagic、`module_layout` 和所有导入符号 CRC，包括模块间导出。缺失导出、配置、链接、Nova 或配套模块检查失败都会停止打包。
+
+需要匹配模块的 AnyKernel3 ZIP 文件名带有 `requires-matching-modules`，并同时交付 `VendorModules-floral-stage2.zip`。模块归档包含 27 个 `.ko` 与使用说明；刷入前需为当前 ROM 准备同步替换。AnyKernel3 继续只更新 boot 内核，模块部署不自动写入 vendor。回退时内核和模块一起恢复。
 
 每次运行的配置、编译器版本、源码提交、日志、符号表、容器能力报告与 ABI 结果保存在 GitHub Actions Artifacts。flame／coral 使用共用内核，各自生成机型限定的 AnyKernel3 ZIP；`Image.lz4` 单独归档。当前 ROM 的 boot 输入由用户按需提供，默认构建不生成独立 `boot.img`。
 
