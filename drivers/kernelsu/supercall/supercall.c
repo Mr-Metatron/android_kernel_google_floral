@@ -78,8 +78,9 @@ bool ksu_is_su_session_fd(const struct file *filp)
 }
 
 // downstream: make sure to pass arg as reference, this can allow us to extend things.
-// Supercall results are returned through arg. Syscall hooks must continue
-// through the native reboot capability and magic checks after this handler.
+// Return 0 when the magic belongs to us and the call was consumed, non-zero
+// otherwise. The SUSFS kernel/reboot.c inline hook uses that to decide
+// whether the real reboot syscall has to run.
 int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg)
 {
 	if (magic1 != KSU_INSTALL_MAGIC1)

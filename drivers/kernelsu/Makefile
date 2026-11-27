@@ -59,15 +59,15 @@ else
 $(info -- $(REPO_NAME): using Unknown)
 endif
 
-# Floral 4.14 built-in KPM uses a dedicated kernel-only entry. The matched
-# KernelPatch image is required; other old kernels retain the upstream gate.
+# KPM uses the upstream 5.10+ bridge or the built-in Floral 4.14 bridge.
 ifeq ($(CONFIG_KPM), y)
 ifeq ($(KERNEL_TYPE), GKI 2.0)
 $(info -- KPM is enabled)
 else ifeq ($(KERNEL_VERSION)-$(CONFIG_ARM64)-$(CONFIG_KSU), 4.14-y-y)
-$(info -- KPM is enabled: floral 4.14 dedicated bridge)
+CFLAGS_ksu.o += -DKSU_CAN_USE_KPM
+$(info -- KPM is enabled)
 else
-$(info -- KPM is disabled: unsupported kernel/bridge combination)
+$(info -- KPM is disabled: requires Linux 5.10+)
 endif
 else
 $(info -- KPM is disabled)

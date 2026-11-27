@@ -19,11 +19,6 @@
 void ksu_selinux_hide_init();
 void ksu_selinux_hide_exit();
 
-#ifdef CONFIG_KSU_SUSFS
-bool ksu_selinux_hide_is_active(void);
-bool ksu_selinux_hide_should_filter_context(char *context, size_t size);
-#endif
-
 static int sepol_expected_argc(u32 cmd);
 
 // flex array

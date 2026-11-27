@@ -873,8 +873,7 @@ static ssize_t sel_write_access(struct file *file, char *buf, size_t size)
 		goto out;
 
 #ifdef CONFIG_KSU_SUSFS
-	if (ksu_selinux_hide_should_filter_context(scon, strlen(scon)) ||
-	    ksu_selinux_hide_should_filter_context(tcon, strlen(tcon)))
+	if (ksu_selinux_hide_should_filter_context(buf, size))
 		goto out;
 #endif
 	length = security_context_str_to_sid(state, scon, &ssid, GFP_KERNEL);

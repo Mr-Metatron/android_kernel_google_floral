@@ -1933,7 +1933,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 #if defined(CONFIG_ARM64) && defined(CONFIG_JUMP_LABEL)
 	if (preinit_fd >= 0 &&
 	    ksu_preinit_handle_post_execveat(&fd, &filename, &argv, &envp,
-					    &flags, &retval, &preinit_fd) == -EAGAIN) {
+					    &flags, &retval, &preinit_fd) == -EINVAL) {
 		/* The runner could not load. Retry the unchanged init arguments. */
 		filename->refcnt++;
 		retval = __do_execve_file(fd, filename, argv, envp, flags, NULL);
