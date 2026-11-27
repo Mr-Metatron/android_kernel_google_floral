@@ -10,11 +10,15 @@ Nova 通过 builtin-new 接入，保留输入事件安全模式接线。SUSFS �
 
 4.14 的 KPM 适配使用 `sukisu_kpm_legacy_entry` 薄桥，沿 Nova 现有授权入口调用配套 KP loader，不启用额外 APatch Root 入口。KP 在完整内核链接与检查通过后注入；原始 `Image.unpatched`、`Image.lz4.unpatched` 保留在本次构建 Artifact 中。
 
-保留已有的 Nova 编译硬化、preinit 所有权修复及 `do_filp_open` 单次 fresh-open 重试。SUSFS 模式复用内联 AVC 处理，仅保留实际使用的 SELinux 状态页，避免重复运行期代码改写。
+Nova 本地适配集中在三个文件：`Makefile` 保留冻结身份、LOS 编译保护、SELinux 生成头依赖及 4.14 KPM 宏；`extension/kpm/kpm.c` 保留旧内核薄桥；`feature/selinux_hide.c` 保留两个宿主查询接口。其余 Nova 文件沿用锁定的上游实现。
+
+preinit 沿用上游文件名处理，宿主保留跨 exec 的引用，并按上游 `-EINVAL` 返回值重试原 init 一次。sucompat 的 access/stat 查询恢复上游行为，未授权进程可能查询到 su，实际执行仍经过 Nova 授权检查。`do_filp_open` 的单次 fresh-open 重试保持。
+
+SELinux 查询通过现有接口传入完整请求，保留来源与目标上下文的配对信息。状态页初始化及慢 AVC 审计 hook 沿用上游；Nova 的 `selinux_hide`、`avc_spoof` 与 SUSFS AVC 开关各自生效。上游状态页路径可能额外分配一个 4 KiB 页面，第二次分配失败时隐藏状态页可能未启用。
 
 ## 编译保护与 ABI
 
-保持 `CONFIG_LTO_CLANG=y`、禁用 ThinLTO，启用非 permissive CFI、Shadow Call Stack、强栈保护、栈初始化、`REFCOUNT_FULL`、`AUDIT` 和 `FRAME_WARN=3072`。KP 桥接沿用其必要的既有 CFI 例外；该例外不扩大到 Nova 或内核其他代码。
+沿用官方 LOS 的 `CONFIG_LTO_CLANG=y`、禁用 ThinLTO、非 permissive CFI、Shadow Call Stack、强栈保护、栈初始化、`REFCOUNT_FULL`、`AUDIT` 和 `FRAME_WARN=3072`。全局真实 SELinux Enforcing、原生 setenforce 权限检查及 Manager 认证保持。Nova 慢 AVC 审计转发与 KP 桥接沿用上游局部 CFI 例外，KP 的 SCS 覆盖保持上游范围；不把例外扩散到其他代码。
 
 64 位 `CROSS_COMPILE` 保持为空，使用树内 GNU AArch64 Clang target。构建前检查真实 bitcode 的 `aarch64-unknown-linux-gnu` triple，链接后检查全局栈 canary 引用及保护代码，避免误用 Android 用户态 TLS canary ABI。
 
@@ -31,6 +35,12 @@ Clang 从固定 [GitHub Release 缓存](https://github.com/Mr-Metatron/android_k
 需要 Fastboot 镜像时，在手动工作流传入当前 ROM 的 `boot_image_url` 并选择 `boot_device`；打包调用固定 AnyKernel3 内的 `magiskboot`。默认构建不依赖某个日期的 nightly boot URL。使用方式见 [打包说明](../ci/packaging/README.md)。
 
 每次构建的实际源码提交、命令、日志、检查结果及资源记录只保存在 Actions Artifacts；下载链接和检查报告不固化进 Git。源码说明仅保留设计、适配与已知边界。
+
+## 上游更新设计
+
+自动跟进尚未实施。后续更新以 `sources.json` 为唯一人工维护的身份来源，导入固定的 `builtin-new` 候选提交，重放最小补丁，并生成 Makefile 的冻结身份块。普通 make 与 CI 使用相同身份；构建时不运行上游 Git/Curl 版本探测。
+
+候选复用现有工作流和检查，先编译 `ksu.o`，再执行完整构建；显式调度时传入候选完整 SHA 和 `stage=stage1`。更新流程需在缺少 Nova、补丁或宿主接口不兼容、构建检查失败时停止，不降为 baseline，也不推进当前可用版本。SUSFS、KP、Manager 和工具链继续独立锁定。
 
 ## 设备验收与回退
 

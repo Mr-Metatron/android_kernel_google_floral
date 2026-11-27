@@ -174,7 +174,7 @@ manifest={
  'device_tested':False,'extra_root_provider':False,
  'source_review':json.loads((e/'source-review.json').read_text()),
  'static_checks':json.loads((e/'static-checks.json').read_text()),
- 'protection_scope':'LOS CFI/SCS retained; existing KP-only CFI exceptions and upstream KP SCS coverage retained',
+ 'protection_scope':'LOS/Nova build protections retained; upstream Nova AVC and KP bridge CFI exceptions and upstream KP SCS coverage retained',
 }
 (dist/'kpm-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 PY
