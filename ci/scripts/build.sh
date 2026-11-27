@@ -42,6 +42,10 @@ python3 "$root/ci/scripts/check-build.py" config "$out" "$dist" "$stage"
 # full build. These objects are reused by the normal build below.
 make "${make_args[@]}" -j"$FLORAL_JOBS" fs/open.o fs/namei.o 2>&1 | tee "$dist/target-probe.log"
 python3 "$root/ci/scripts/check-build.py" target "$out" "$dist" "$stage"
+if [[ "$stage" == stage1 ]]; then
+  make "${make_args[@]}" -j"$FLORAL_JOBS" drivers/kernelsu/ksu.o 2>&1 | tee "$dist/nova-object.log"
+  python3 "$root/ci/scripts/check-nova.py" "$out" "$dist" --object-only
+fi
 set +e
 make "${make_args[@]}" -j"$FLORAL_JOBS" Image Image.lz4 dtbs modules 2>&1 | tee "$dist/build.log"
 status=${PIPESTATUS[0]}
