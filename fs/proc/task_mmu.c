@@ -1550,9 +1550,6 @@ static int pagemap_hugetlb_range(pte_t *ptep, unsigned long hmask,
 	int err = 0;
 	pte_t pte;
 
-	if (pagemap_vma_is_sus_map(vma))
-		return pagemap_pte_hole(addr, end, walk);
-
 	if (vma->vm_flags & VM_SOFTDIRTY)
 		flags |= PM_SOFT_DIRTY;
 
