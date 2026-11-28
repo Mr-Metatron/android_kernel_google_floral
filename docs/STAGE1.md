@@ -8,6 +8,8 @@
 
 Nova 通过 builtin-new 接入，保留输入事件安全模式接线。SUSFS 接入 VFS、proc、挂载、statx、SELinux 审计与 kallsyms；私有 statx 标志在内核路径内使用，返回用户态前清除。隐藏 pagemap 映射逐页输出零条目，保持读取长度和偏移。
 
+挂载列表在打开时选择视图，过滤后复用原生输出函数。inotify fdinfo 保留被监视 inode 的 SUS_KSTAT 处理，沿用原生两参数回调。pagemap 适配覆盖当前启用的普通页路径，未启用的 hugetlb 回调保持原生实现。
+
 4.14 的 KPM 适配使用 `sukisu_kpm_legacy_entry` 薄桥，沿 Nova 现有授权入口调用配套 KP loader，不启用额外 APatch Root 入口。KP 在完整内核链接与检查通过后注入；原始 `Image.unpatched`、`Image.lz4.unpatched` 保留在本次构建 Artifact 中。
 
 Nova 本地适配集中在三个文件：`Makefile` 保留冻结身份、LOS 编译保护、SELinux 生成头依赖及 4.14 KPM 宏；`extension/kpm/kpm.c` 保留旧内核薄桥；`feature/selinux_hide.c` 保留两个宿主查询接口。其余 Nova 文件沿用锁定的上游实现。
